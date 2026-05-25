@@ -1,12 +1,16 @@
 {
-  "name": "omni-document-migrator",
+  "name": "omni-multi-instance-tools",
   "version": "0.1.0",
-  "description": "Localhost tool for migrating Omni dashboards across instances",
+  "description": "Localhost tool for migrating Omni dashboards across instances, and a few other tools to manage Omni instances",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/simpro-shared/omni-multi-instance-tools.git"
+  },
   "private": true,
   "license": "MIT",
   "author": "Simpro Group",
   "type": "module",
-  "packageManager": "pnpm@10.33.0",
+  "packageManager": "pnpm@11.3.0",
   "engines": {
     "node": ">=20"
   },
