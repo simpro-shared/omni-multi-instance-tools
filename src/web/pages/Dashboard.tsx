@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
+import type { InstancePublic } from '../../shared/types';
 import type { ConnectionStat, EmbedUserStat, InstanceDashboardStats, InstanceEmbedUserStats } from '../lib/api';
 
 // --- localStorage helpers ---
@@ -50,10 +51,6 @@ function lsSetExcluded(instanceId: string, excluded: Set<string>): void {
   localStorage.setItem(lsKey.excluded(instanceId), JSON.stringify([...excluded]));
 }
 
-export function isDashboardEnabled(instanceId: string): boolean {
-  return localStorage.getItem(`dashboard:enabled:${instanceId}`) !== 'false';
-}
-
 // --- Dashboard ---
 
 type DashTab = 'connections' | 'users';
@@ -92,6 +89,7 @@ function TabButton({ label, active, onClick }: { label: string; active: boolean;
 
 function ConnectionsTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
   const cached = lsGetCache<InstanceDashboardStats[]>(lsKey.connectionsCache);
+  const { data: instances } = useQuery<InstancePublic[]>({ queryKey: ['instances'], queryFn: api.listInstances, staleTime: Infinity });
   const { data: allData, isLoading, error, refetch, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: api.getDashboardStats,
@@ -119,7 +117,7 @@ function ConnectionsTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
     });
   }, [allData, dataUpdatedAt]);
 
-  const data = allData?.filter(i => isDashboardEnabled(i.instanceId));
+  const data = allData;
 
   const toggleExpand = (id: string) =>
     setExpanded(prev => {
@@ -148,10 +146,12 @@ function ConnectionsTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
   }
 
   if (!data || data.length === 0) {
+    const hasInstances = instances && instances.length > 0;
+    const allDisabled = hasInstances && instances.every(i => i.dashboardEnabled === false);
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
         <p className="text-zinc-400 text-sm">
-          {allData && allData.length > 0
+          {allDisabled
             ? 'All instances are disabled on the dashboard. Enable them from the Instances tab.'
             : 'No instances configured.'}
         </p>
@@ -220,6 +220,7 @@ const ALL_EMBED_USERS_GROUP = 'All Embed Users';
 
 function UsersTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
   const cached = lsGetCache<InstanceEmbedUserStats[]>(lsKey.usersCache);
+  const { data: instances } = useQuery<InstancePublic[]>({ queryKey: ['instances'], queryFn: api.listInstances, staleTime: Infinity });
   const { data: allData, isLoading, error, refetch, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ['dashboard-embed-users'],
     queryFn: api.getEmbedUserStats,
@@ -236,7 +237,7 @@ function UsersTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
     if (allData) lsSetCache(lsKey.usersCache, allData, dataUpdatedAt);
   }, [allData, dataUpdatedAt]);
 
-  const data = allData?.filter(i => isDashboardEnabled(i.instanceId));
+  const data = allData;
 
   const toggleExpand = (id: string) =>
     setExpanded(prev => {
@@ -256,10 +257,12 @@ function UsersTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
   }
 
   if (!data || data.length === 0) {
+    const hasInstances = instances && instances.length > 0;
+    const allDisabled = hasInstances && instances.every(i => i.dashboardEnabled === false);
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
         <p className="text-zinc-400 text-sm">
-          {allData && allData.length > 0
+          {allDisabled
             ? 'All instances are disabled on the dashboard. Enable them from the Instances tab.'
             : 'No instances configured.'}
         </p>

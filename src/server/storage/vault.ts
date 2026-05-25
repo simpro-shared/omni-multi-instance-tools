@@ -113,3 +113,11 @@ export function setInstanceActions(id: string, actions: PostMigrationAction[]): 
   persist();
 }
 
+export function setInstanceDashboardEnabled(id: string, enabled: boolean): void {
+  const c = requireCache();
+  const idx = c.instances.findIndex(i => i.id === id);
+  if (idx === -1) throw new Error('instance not found');
+  c.instances[idx] = { ...c.instances[idx]!, dashboardEnabled: enabled };
+  persist();
+}
+

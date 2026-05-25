@@ -2,11 +2,6 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { Instance, InstancePublic, InstanceRole } from '../../shared/types';
-import { isDashboardEnabled } from './Dashboard';
-
-function setDashboardEnabled(id: string, value: boolean): void {
-  localStorage.setItem(`dashboard:enabled:${id}`, String(value));
-}
 
 const blank: Omit<Instance, 'id'> = {
   label: '',
@@ -23,19 +18,12 @@ export default function Instances() {
   const qc = useQueryClient();
   const { data: instances } = useQuery({ queryKey: ['instances'], queryFn: api.listInstances });
   const [form, setForm] = useState<Omit<Instance, 'id'> & { id?: string }>(blank);
-  const [dashEnabled, setDashEnabled] = useState<Record<string, boolean>>(() => {
-    // lazy-init from localStorage once; updates are written directly
-    return {};
+
+  const toggleDash = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      api.setInstanceDashboardEnabled(id, enabled),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['instances'] }),
   });
-
-  const getDashEnabled = (id: string): boolean =>
-    id in dashEnabled ? dashEnabled[id]! : isDashboardEnabled(id);
-
-  const toggleDash = (id: string): void => {
-    const next = !getDashEnabled(id);
-    setDashboardEnabled(id, next);
-    setDashEnabled(prev => ({ ...prev, [id]: next }));
-  };
   const create = useMutation({
     mutationFn: (b: Omit<Instance, 'id'>) => api.createInstance(b),
     onSuccess: () => {
@@ -90,11 +78,11 @@ export default function Instances() {
                 <div className="text-zinc-500 text-xs">{i.baseUrl} · key {i.apiKeyMasked}</div>
               </div>
               <button
-                className={`text-xs ${getDashEnabled(i.id) ? 'text-emerald-400 hover:text-emerald-300' : 'text-zinc-600 hover:text-zinc-400'}`}
-                title={getDashEnabled(i.id) ? 'Showing on Dashboard — click to hide' : 'Hidden from Dashboard — click to show'}
-                onClick={() => toggleDash(i.id)}
+                className={`text-xs ${i.dashboardEnabled !== false ? 'text-emerald-400 hover:text-emerald-300' : 'text-zinc-600 hover:text-zinc-400'}`}
+                title={i.dashboardEnabled !== false ? 'Showing on Dashboard — click to hide' : 'Hidden from Dashboard — click to show'}
+                onClick={() => toggleDash.mutate({ id: i.id, enabled: i.dashboardEnabled === false })}
               >
-                {getDashEnabled(i.id) ? 'dashboard ✓' : 'dashboard ✗'}
+                {i.dashboardEnabled !== false ? 'dashboard ✓' : 'dashboard ✗'}
               </button>
               <button className="text-xs text-zinc-400 hover:text-zinc-100" onClick={() => startEdit(i)}>edit</button>
               <button

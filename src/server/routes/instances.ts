@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { deleteInstance, getInstance, isUnlocked, listInstances, upsertInstance, setInstanceActions } from '../storage/vault.js';
+import { deleteInstance, getInstance, isUnlocked, listInstances, upsertInstance, setInstanceActions, setInstanceDashboardEnabled } from '../storage/vault.js';
 
 const instanceBody = z.object({
   id: z.string().uuid().optional(),
@@ -49,6 +49,14 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const actions = z.array(actionSchema).parse(req.body);
     setInstanceActions(id, actions);
+    return { ok: true };
+  });
+
+  app.patch('/api/instances/:id/dashboard-enabled', async req => {
+    requireUnlocked();
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const { enabled } = z.object({ enabled: z.boolean() }).parse(req.body);
+    setInstanceDashboardEnabled(id, enabled);
     return { ok: true };
   });
 

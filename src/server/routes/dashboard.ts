@@ -44,7 +44,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/dashboard/stats', async (_req, reply) => {
     if (!isUnlocked()) return reply.code(423).send({ error: 'vault locked' });
 
-    const publicInstances = listInstances();
+    const publicInstances = listInstances().filter(i => i.dashboardEnabled !== false);
     const results = await Promise.allSettled(
       publicInstances.map(async (pub): Promise<InstanceDashboardStats> => {
         const inst = getInstance(pub.id)!;
@@ -111,7 +111,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/dashboard/embed-users', async (_req, reply) => {
     if (!isUnlocked()) return reply.code(423).send({ error: 'vault locked' });
 
-    const publicInstances = listInstances();
+    const publicInstances = listInstances().filter(i => i.dashboardEnabled !== false);
     const results = await Promise.allSettled(
       publicInstances.map(async (pub): Promise<InstanceEmbedUserStats> => {
         const inst = getInstance(pub.id)!;

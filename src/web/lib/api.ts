@@ -81,6 +81,12 @@ export const api = {
     }).then(j<InstancePublic>),
   deleteInstance: (id: string) =>
     fetch(`/api/instances/${id}`, { method: 'DELETE' }).then(j<{ ok: true }>),
+  setInstanceDashboardEnabled: (id: string, enabled: boolean) =>
+    fetch(`/api/instances/${id}/dashboard-enabled`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    }).then(j<{ ok: true }>),
   saveInstanceActions: (id: string, actions: PostMigrationAction[]) =>
     fetch(`/api/instances/${id}/actions`, {
       method: 'PUT',
