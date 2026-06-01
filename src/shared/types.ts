@@ -1,5 +1,12 @@
 export type InstanceRole = 'source' | 'destination';
 
+export interface DashboardFilter {
+  databaseContains: string[];
+  databaseExact: string[];
+  externalIdContains: string[];
+  externalIdExact: string[];
+}
+
 export interface PostMigrationAction {
   method: string;
   url: string;
@@ -28,7 +35,9 @@ export interface Instance {
   folderId: string;
   folderPath: string;
   postMigrationActions?: PostMigrationAction[];
-  dashboardEnabled?: boolean;
+  dashboardTabs?: ('connections' | 'users')[];
+  dashboardFilter?: DashboardFilter;
+  entityGroupSeparator?: string;
 }
 
 export type InstancePublic = Omit<Instance, 'apiKey'> & { apiKeyMasked: string };

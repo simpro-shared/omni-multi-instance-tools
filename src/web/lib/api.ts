@@ -1,6 +1,7 @@
 import type {
   InstancePublic,
   Instance,
+  DashboardFilter,
   OmniDoc,
   OmniLabel,
   JobPlan,
@@ -18,6 +19,7 @@ export interface ConnectionStat {
   hasSchemaModel: boolean;
   schemaModelId: string | null;
   schemaModelUpdatedAt: string | null;
+  filtered?: boolean;
 }
 
 export interface InstanceDashboardStats {
@@ -27,6 +29,7 @@ export interface InstanceDashboardStats {
   baseUrl: string;
   totalConnections: number;
   connections: ConnectionStat[];
+  filteredCount?: number;
   error?: string;
 }
 
@@ -37,6 +40,9 @@ export interface EmbedUserStat {
   active: boolean;
   embedExternalId: string;
   groups: Array<{ display: string; value: string }>;
+  lastLogin?: string | null;
+  createdAt?: string;
+  filtered?: boolean;
 }
 
 export interface InstanceEmbedUserStats {
@@ -45,6 +51,7 @@ export interface InstanceEmbedUserStats {
   instanceRole: string;
   baseUrl: string;
   users: EmbedUserStat[];
+  filteredCount?: number;
   error?: string;
 }
 
@@ -81,11 +88,17 @@ export const api = {
     }).then(j<InstancePublic>),
   deleteInstance: (id: string) =>
     fetch(`/api/instances/${id}`, { method: 'DELETE' }).then(j<{ ok: true }>),
-  setInstanceDashboardEnabled: (id: string, enabled: boolean) =>
-    fetch(`/api/instances/${id}/dashboard-enabled`, {
+  setInstanceDashboardTabs: (id: string, tabs: ('connections' | 'users')[]) =>
+    fetch(`/api/instances/${id}/dashboard-tabs`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ tabs }),
+    }).then(j<{ ok: true }>),
+  setInstanceDashboardFilter: (id: string, filter: DashboardFilter) =>
+    fetch(`/api/instances/${id}/dashboard-filter`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(filter),
     }).then(j<{ ok: true }>),
   saveInstanceActions: (id: string, actions: PostMigrationAction[]) =>
     fetch(`/api/instances/${id}/actions`, {
@@ -141,6 +154,13 @@ export const api = {
 
   getDashboardStats: () => fetch('/api/dashboard/stats').then(j<InstanceDashboardStats[]>),
   getEmbedUserStats: () => fetch('/api/dashboard/embed-users').then(j<InstanceEmbedUserStats[]>),
+
+  changePassphrase: (currentPassphrase: string, newPassphrase: string) =>
+    fetch('/api/settings/change-passphrase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassphrase, newPassphrase }),
+    }).then(j<{ ok: true }>),
 
   refreshSchema: (instanceId: string, modelId: string) =>
     fetch(`/api/dashboard/${instanceId}/refresh-schema`, {

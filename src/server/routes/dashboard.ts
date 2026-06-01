@@ -10,6 +10,7 @@ export interface ConnectionStat {
   hasSchemaModel: boolean;
   schemaModelId: string | null;
   schemaModelUpdatedAt: string | null;
+  filtered?: boolean;
 }
 
 export interface InstanceDashboardStats {
@@ -19,6 +20,7 @@ export interface InstanceDashboardStats {
   baseUrl: string;
   totalConnections: number;
   connections: ConnectionStat[];
+  filteredCount: number;
   error?: string;
 }
 
@@ -29,6 +31,9 @@ export interface EmbedUserStat {
   active: boolean;
   embedExternalId: string;
   groups: Array<{ display: string; value: string }>;
+  lastLogin?: string | null;
+  createdAt?: string;
+  filtered?: boolean;
 }
 
 export interface InstanceEmbedUserStats {
@@ -37,6 +42,7 @@ export interface InstanceEmbedUserStats {
   instanceRole: string;
   baseUrl: string;
   users: EmbedUserStat[];
+  filteredCount: number;
   error?: string;
 }
 
@@ -44,7 +50,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/dashboard/stats', async (_req, reply) => {
     if (!isUnlocked()) return reply.code(423).send({ error: 'vault locked' });
 
-    const publicInstances = listInstances().filter(i => i.dashboardEnabled !== false);
+    const publicInstances = listInstances().filter(i => !i.dashboardTabs || i.dashboardTabs.includes('connections'));
     const results = await Promise.allSettled(
       publicInstances.map(async (pub): Promise<InstanceDashboardStats> => {
         const inst = getInstance(pub.id)!;
@@ -60,12 +66,17 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
             .map(m => [m.connectionId, m])
         );
 
+        const dbContains = (inst.dashboardFilter?.databaseContains ?? []).map(s => s.toLowerCase());
+        const dbExact = (inst.dashboardFilter?.databaseExact ?? []).map(s => s.toLowerCase());
+        const hasFilter = dbContains.length > 0 || dbExact.length > 0;
         const connectionStats: ConnectionStat[] = connections
           .filter(c => !c.deletedAt)
           .map(c => {
             const model = schemaModelByConnectionId.get(c.id);
             const hasSchemaModel = !!model && model.createdAt !== model.updatedAt;
-            return { id: c.id, name: c.name, dialect: c.dialect, database: c.database, hasSchemaModel, schemaModelId: model?.id ?? null, schemaModelUpdatedAt: model?.updatedAt ?? null };
+            const db = c.database.toLowerCase();
+            const filtered = hasFilter && (dbContains.some(n => db.includes(n)) || dbExact.some(n => db === n));
+            return { id: c.id, name: c.name, dialect: c.dialect, database: c.database, hasSchemaModel, schemaModelId: model?.id ?? null, schemaModelUpdatedAt: model?.updatedAt ?? null, filtered };
           });
 
         return {
@@ -73,8 +84,9 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
           instanceLabel: inst.label,
           instanceRole: inst.role,
           baseUrl: inst.baseUrl,
-          totalConnections: connectionStats.length,
+          totalConnections: connectionStats.filter(c => !c.filtered).length,
           connections: connectionStats,
+          filteredCount: connectionStats.filter(c => c.filtered).length,
         };
       })
     );
@@ -89,6 +101,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         baseUrl: pub.baseUrl,
         totalConnections: 0,
         connections: [],
+        filteredCount: 0,
         error: r.reason instanceof Error ? r.reason.message : String(r.reason),
       };
     });
@@ -111,25 +124,37 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/dashboard/embed-users', async (_req, reply) => {
     if (!isUnlocked()) return reply.code(423).send({ error: 'vault locked' });
 
-    const publicInstances = listInstances().filter(i => i.dashboardEnabled !== false);
+    const publicInstances = listInstances().filter(i => !i.dashboardTabs || i.dashboardTabs.includes('users'));
     const results = await Promise.allSettled(
       publicInstances.map(async (pub): Promise<InstanceEmbedUserStats> => {
         const inst = getInstance(pub.id)!;
         const client = new OmniClient(inst);
-        const users = await client.listEmbedUsers();
-        return {
-          instanceId: inst.id,
-          instanceLabel: inst.label,
-          instanceRole: inst.role,
-          baseUrl: inst.baseUrl,
-          users: users.map(u => ({
+        const rawUsers = await client.listEmbedUsers();
+        const idContains = (inst.dashboardFilter?.externalIdContains ?? []).map(s => s.toLowerCase());
+        const idExact = (inst.dashboardFilter?.externalIdExact ?? []).map(s => s.toLowerCase());
+        const hasFilter = idContains.length > 0 || idExact.length > 0;
+        const users = rawUsers.map(u => {
+          const eid = u.embedExternalId.toLowerCase();
+          const filtered = hasFilter && (idContains.some(n => eid.includes(n)) || idExact.some(n => eid === n));
+          return {
             id: u.id,
             displayName: u.displayName,
             userName: u.userName,
             active: u.active,
             embedExternalId: u.embedExternalId,
             groups: u.groups,
-          })),
+            lastLogin: u['urn:omni:params:scim:schemas:extension:user:2.0']?.lastLogin ?? null,
+            createdAt: u.meta.created,
+            filtered,
+          };
+        });
+        return {
+          instanceId: inst.id,
+          instanceLabel: inst.label,
+          instanceRole: inst.role,
+          baseUrl: inst.baseUrl,
+          users,
+          filteredCount: users.filter(u => u.filtered).length,
         };
       })
     );
@@ -143,6 +168,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         instanceRole: pub.role,
         baseUrl: pub.baseUrl,
         users: [],
+        filteredCount: 0,
         error: r.reason instanceof Error ? r.reason.message : String(r.reason),
       };
     });

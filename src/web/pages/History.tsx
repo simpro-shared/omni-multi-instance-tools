@@ -6,7 +6,7 @@ export default function History() {
   const { data } = useQuery({ queryKey: ['jobs'], queryFn: api.listJobs });
   return (
     <div className="space-y-3">
-      <h2 className="text-lg font-semibold">Job history</h2>
+      <h2 className="text-lg font-semibold">Migration history</h2>
       {!data?.length && <div className="text-sm text-zinc-500">No jobs yet.</div>}
       <ul className="space-y-2">
         {data?.map(j => (

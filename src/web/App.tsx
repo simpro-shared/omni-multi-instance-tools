@@ -8,6 +8,7 @@ import Migrate from './pages/Migrate';
 import Documents from './pages/Documents';
 import JobDetail from './pages/JobDetail';
 import History from './pages/History';
+import Settings from './pages/Settings';
 
 export default function App() {
   const qc = useQueryClient();
@@ -22,30 +23,33 @@ export default function App() {
   if (!data?.unlocked) return <Unlock vaultExists={data?.vaultExists ?? false} />;
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b border-zinc-800 px-6 py-3 flex items-center gap-6">
-        <h1 className="font-semibold text-zinc-200">Omni Multi-Instance Tools</h1>
-        <nav className="flex gap-4 text-sm">
-          <NavLink to="/dashboard" className={navClass}>Dashboard</NavLink>
-          <NavLink to="/migrate" className={navClass}>Migrate</NavLink>
-          <NavLink to="/documents" className={navClass}>Documents</NavLink>
-          <NavLink to="/instances" className={navClass}>Instances</NavLink>
-          <NavLink to="/history" className={navClass}>History</NavLink>
+    <div className="h-screen flex overflow-hidden">
+      <aside className="w-48 shrink-0 border-r border-zinc-800 flex flex-col h-full">
+        <div className="px-4 py-4 border-b border-zinc-800">
+          <span className="text-sm font-semibold text-zinc-200 leading-tight">Omni Multi-Instance</span>
+        </div>
+        <nav className="flex-1 py-3 flex flex-col gap-0.5 px-2">
+          <SideNavLink to="/dashboard">Dashboard</SideNavLink>
+          <SideNavLink to="/migrate">Migrate</SideNavLink>
+          <SideNavLink to="/documents">Documents</SideNavLink>
+          <SideNavLink to="/instances">Instances</SideNavLink>
+          <SideNavLink to="/history">Migration History</SideNavLink>
         </nav>
-        <div className="ml-auto">
+        <div className="py-3 flex flex-col gap-0.5 px-2 border-t border-zinc-800">
+          <SideNavLink to="/settings">Settings</SideNavLink>
           <button
-            className="text-xs text-zinc-400 hover:text-zinc-200"
+            className="w-full text-left px-3 py-1.5 rounded text-sm text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/50 transition-colors"
             onClick={async () => {
               await api.lock();
               await qc.invalidateQueries({ queryKey: ['unlock-status'] });
               nav('/');
             }}
           >
-            lock
+            Lock vault
           </button>
         </div>
-      </header>
-      <main className="flex-1 p-6 max-w-6xl w-full mx-auto">
+      </aside>
+      <main className="flex-1 overflow-auto p-6">
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
@@ -54,14 +58,26 @@ export default function App() {
           <Route path="/instances" element={<Instances />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/history" element={<History />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
     </div>
   );
 }
 
-function navClass({ isActive }: { isActive: boolean }): string {
-  return isActive
-    ? 'text-zinc-100 border-b border-zinc-100 pb-0.5'
-    : 'text-zinc-400 hover:text-zinc-200';
+function SideNavLink({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        `px-3 py-1.5 rounded text-sm transition-colors ${
+          isActive
+            ? 'bg-zinc-800 text-zinc-100'
+            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+        }`
+      }
+    >
+      {children}
+    </NavLink>
+  );
 }

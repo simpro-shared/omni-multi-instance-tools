@@ -86,6 +86,7 @@ export interface ScimUser {
   emails: Array<{ primary: boolean; value: string }>;
   groups: ScimUserGroup[];
   meta: { created: string; lastModified: string; resourceType: string };
+  'urn:omni:params:scim:schemas:extension:user:2.0'?: { lastLogin?: string | null };
 }
 
 export interface ScimListResponse {

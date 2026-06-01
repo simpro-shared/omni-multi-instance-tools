@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { deriveKey, encrypt, decrypt, randomSalt, SIZES } from './crypto.js';
-import type { Instance, InstancePublic, PostMigrationAction } from '../../shared/types.js';
+import type { DashboardFilter, Instance, InstancePublic, PostMigrationAction } from '../../shared/types.js';
 
 interface VaultData {
   version: 1;
@@ -42,9 +42,20 @@ export function unlock(passphrase: string): void {
   const json = decrypt(payload, key);
   const parsed = JSON.parse(json) as VaultData;
   if (parsed.version !== 1) throw new Error(`unsupported vault version: ${parsed.version}`);
+  // Migrate dashboardEnabled (boolean) → dashboardTabs (array)
+  let migrated = false;
+  for (const inst of parsed.instances) {
+    if ('dashboardEnabled' in inst) {
+      const legacy = (inst as Record<string, unknown>).dashboardEnabled;
+      inst.dashboardTabs = legacy === false ? [] : ['connections', 'users'];
+      delete (inst as Record<string, unknown>).dashboardEnabled;
+      migrated = true;
+    }
+  }
   salt = Buffer.from(fileSalt);
   derivedKey = key;
   cache = parsed;
+  if (migrated) persist();
 }
 
 function persist(): void {
@@ -113,11 +124,43 @@ export function setInstanceActions(id: string, actions: PostMigrationAction[]): 
   persist();
 }
 
-export function setInstanceDashboardEnabled(id: string, enabled: boolean): void {
+export function setInstanceDashboardTabs(id: string, tabs: ('connections' | 'users')[]): void {
   const c = requireCache();
   const idx = c.instances.findIndex(i => i.id === id);
   if (idx === -1) throw new Error('instance not found');
-  c.instances[idx] = { ...c.instances[idx]!, dashboardEnabled: enabled };
+  c.instances[idx] = { ...c.instances[idx]!, dashboardTabs: tabs };
+  persist();
+}
+
+export function changePassphrase(currentPassphrase: string, newPassphrase: string): void {
+  if (!derivedKey || !salt || !cache) throw new Error('vault locked');
+  const verifyKey = deriveKey(currentPassphrase, salt);
+  if (!verifyKey.equals(derivedKey)) {
+    verifyKey.fill(0);
+    throw Object.assign(new Error('incorrect passphrase'), { statusCode: 400 });
+  }
+  verifyKey.fill(0);
+  const newSalt = randomSalt();
+  const newKey = deriveKey(newPassphrase, newSalt);
+  const oldKey = derivedKey;
+  const oldSalt = salt;
+  derivedKey = newKey;
+  salt = newSalt;
+  try {
+    persist();
+  } catch (e) {
+    derivedKey = oldKey;
+    salt = oldSalt;
+    throw e;
+  }
+  oldKey.fill(0);
+}
+
+export function setInstanceDashboardFilter(id: string, filter: DashboardFilter): void {
+  const c = requireCache();
+  const idx = c.instances.findIndex(i => i.id === id);
+  if (idx === -1) throw new Error('instance not found');
+  c.instances[idx] = { ...c.instances[idx]!, dashboardFilter: filter };
   persist();
 }
 

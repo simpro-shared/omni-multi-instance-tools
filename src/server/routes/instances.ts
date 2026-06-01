@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { deleteInstance, getInstance, isUnlocked, listInstances, upsertInstance, setInstanceActions, setInstanceDashboardEnabled } from '../storage/vault.js';
+import { deleteInstance, getInstance, isUnlocked, listInstances, upsertInstance, setInstanceActions, setInstanceDashboardTabs, setInstanceDashboardFilter, changePassphrase } from '../storage/vault.js';
 
 const instanceBody = z.object({
   id: z.string().uuid().optional(),
@@ -12,6 +12,7 @@ const instanceBody = z.object({
   modelId: z.string().default(''),
   folderId: z.string().default(''),
   folderPath: z.string().default(''),
+  entityGroupSeparator: z.string().optional(),
 });
 
 function requireUnlocked(): void {
@@ -52,11 +53,48 @@ export async function instanceRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  app.patch('/api/instances/:id/dashboard-enabled', async req => {
+  app.patch('/api/instances/:id/dashboard-tabs', async req => {
     requireUnlocked();
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    const { enabled } = z.object({ enabled: z.boolean() }).parse(req.body);
-    setInstanceDashboardEnabled(id, enabled);
+    const { tabs } = z.object({ tabs: z.array(z.enum(['connections', 'users'])) }).parse(req.body);
+    setInstanceDashboardTabs(id, tabs);
+    return { ok: true };
+  });
+
+  const dashboardFilterSchema = z.object({
+    databaseContains: z.array(z.string()).default([]),
+    databaseExact: z.array(z.string()).default([]),
+    externalIdContains: z.array(z.string()).default([]),
+    externalIdExact: z.array(z.string()).default([]),
+  });
+
+  app.put('/api/instances/:id/dashboard-filter', async req => {
+    requireUnlocked();
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const raw = dashboardFilterSchema.parse(req.body);
+    const trim = (arr: string[]) => arr.map(s => s.trim()).filter(Boolean);
+    const filter = {
+      databaseContains: trim(raw.databaseContains),
+      databaseExact: trim(raw.databaseExact),
+      externalIdContains: trim(raw.externalIdContains),
+      externalIdExact: trim(raw.externalIdExact),
+    };
+    setInstanceDashboardFilter(id, filter);
+    return { ok: true };
+  });
+
+  app.post('/api/settings/change-passphrase', async (req, reply) => {
+    requireUnlocked();
+    const { currentPassphrase, newPassphrase } = z.object({
+      currentPassphrase: z.string().min(1),
+      newPassphrase: z.string().min(1),
+    }).parse(req.body);
+    try {
+      changePassphrase(currentPassphrase, newPassphrase);
+    } catch (err) {
+      const code = (err as { statusCode?: number }).statusCode ?? 500;
+      return reply.code(code).send({ error: err instanceof Error ? err.message : 'failed' });
+    }
     return { ok: true };
   });
 
