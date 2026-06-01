@@ -90,7 +90,7 @@ function TabButton({ label, active, onClick }: { label: string; active: boolean;
       onClick={onClick}
       className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
         active
-          ? 'border-zinc-200 text-zinc-100'
+          ? 'border-blue-400 text-blue-300'
           : 'border-transparent text-zinc-500 hover:text-zinc-300'
       }`}
     >
@@ -216,7 +216,7 @@ function ConnectionsTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
         value={globalSearch}
         onChange={e => setGlobalSearch(e.target.value)}
         placeholder="Search all connections across instances…"
-        className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500"
+        className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20"
       />
 
       {globalSearch.trim() ? (
@@ -354,7 +354,7 @@ function UsersTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
         value={globalSearch}
         onChange={e => setGlobalSearch(e.target.value)}
         placeholder="Search all users across instances…"
-        className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500"
+        className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20"
       />
 
       {globalSearch.trim() ? (
@@ -497,7 +497,7 @@ function UserInstanceCard({
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900">
       <button
-        className="w-full flex items-center justify-between gap-2 p-4 text-left"
+        className="w-full flex items-center justify-between gap-2 p-4 text-left hover:bg-zinc-800/40 transition-colors rounded-t-lg"
         onClick={onToggleExpand}
       >
         <div className="flex items-center gap-2 min-w-0">
@@ -544,7 +544,7 @@ function UserInstanceCard({
                   value={search}
                   onChange={e => onSearchChange(e.target.value)}
                   placeholder={viewMode === 'users' ? 'Search users…' : 'Search entities…'}
-                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500"
+                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20"
                 />
                 <div className="flex shrink-0 rounded border border-zinc-700 overflow-hidden text-xs">
                   <button
@@ -606,8 +606,8 @@ function UserInstanceCard({
                   </tr>
                 </thead>
                 <tbody>
-                  {flatRows.map(({ user: u, entity }) => {
-                    const dim = !matchesSearch(u) ? 'opacity-40' : u.filtered ? 'opacity-50 italic' : '';
+                  {(q ? flatRows.filter(({ user: u }) => matchesSearch(u)) : flatRows).map(({ user: u, entity }) => {
+                    const dim = u.filtered ? 'opacity-50 italic' : '';
                     return (
                       <tr
                         key={`${u.id}:${entity}`}
@@ -638,6 +638,7 @@ function UserInstanceCard({
 
 function groupUsersByGroup(users: EmbedUserStat[], separator?: string): Record<string, EmbedUserStat[]> {
   const out: Record<string, EmbedUserStat[]> = {};
+  const seen: Record<string, Set<string>> = {};
   const toKey = (display: string) =>
     separator ? display.split(separator)[0]!.trim() : display;
   for (const u of users) {
@@ -648,7 +649,11 @@ function groupUsersByGroup(users: EmbedUserStat[], separator?: string): Record<s
     } else {
       for (const g of relevantGroups) {
         const key = toKey(g.display);
-        (out[key] ??= []).push(u);
+        (seen[key] ??= new Set());
+        if (!seen[key]!.has(u.id)) {
+          seen[key]!.add(u.id);
+          (out[key] ??= []).push(u);
+        }
       }
     }
   }
@@ -671,7 +676,13 @@ function GlobalConnectionResults({
 }) {
   const q = query.toLowerCase();
   const rows = data.flatMap(inst =>
-    inst.connections.map(c => ({ ...c, instanceId: inst.instanceId, instanceLabel: inst.instanceLabel }))
+    inst.connections
+      .filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        c.database.toLowerCase().includes(q) ||
+        c.dialect.toLowerCase().includes(q)
+      )
+      .map(c => ({ ...c, instanceId: inst.instanceId, instanceLabel: inst.instanceLabel }))
   );
 
   return (
@@ -689,11 +700,7 @@ function GlobalConnectionResults({
       <tbody>
         {rows.map(c => {
           const isExcluded = (excluded[c.instanceId] ?? new Set()).has(c.id);
-          const matchesSearch =
-            c.name.toLowerCase().includes(q) ||
-            c.database.toLowerCase().includes(q) ||
-            c.dialect.toLowerCase().includes(q);
-          const dimClass = isExcluded ? 'opacity-30' : c.filtered ? 'opacity-50 italic' : !matchesSearch ? 'opacity-40' : '';
+          const dimClass = isExcluded ? 'opacity-30' : c.filtered ? 'opacity-50 italic' : '';
           return (
             <tr key={`${c.instanceId}:${c.id}`} className={`border-b border-zinc-800/50 last:border-0 transition-opacity ${dimClass}`}>
               <td className="py-1.5 pr-4 text-zinc-500">{c.instanceLabel}</td>
@@ -836,7 +843,7 @@ function UsageBarChart({ data, color }: { data: { label: string; count: number }
 function MiniStat({ label, value, total, warn }: { label: string; value: number; total: number; warn?: boolean }) {
   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
-    <div className="bg-zinc-950/60 rounded p-3">
+    <div className={`bg-zinc-950/60 rounded p-3 ${warn ? 'border-l-2 border-amber-500/50' : ''}`}>
       <div className={`text-xl font-bold ${warn ? 'text-amber-400' : 'text-zinc-100'}`}>{value}</div>
       <div className="text-xs text-zinc-500 mt-0.5">{label}</div>
       {total > 0 && <div className="text-xs text-zinc-700">{pct}%</div>}
@@ -882,7 +889,7 @@ const UserUsageChart = memo(function UserUsageChart({ data }: { data: InstanceEm
 
 function StatCard({ label, value, highlight, filtered }: { label: string; value: number; highlight?: boolean; filtered?: number }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+    <div className={`rounded-lg border border-zinc-800 bg-zinc-900 p-4 border-t-2 ${highlight ? 'border-t-amber-500/70' : 'border-t-blue-500/30'}`}>
       <div className={`text-2xl font-bold ${highlight ? 'text-amber-400' : 'text-zinc-100'}`}>
         {value}
       </div>
@@ -944,7 +951,7 @@ function InstanceCard({
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900">
       <button
-        className="w-full flex items-center justify-between gap-2 p-4 text-left"
+        className="w-full flex items-center justify-between gap-2 p-4 text-left hover:bg-zinc-800/40 transition-colors rounded-t-lg"
         onClick={onToggleExpand}
       >
         <div className="flex items-center gap-2 min-w-0">
@@ -989,7 +996,7 @@ function InstanceCard({
                   value={search}
                   onChange={e => onSearchChange(e.target.value)}
                   placeholder="Search connections…"
-                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500"
+                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20"
                 />
                 {refreshableCount > 0 && (
                   <button
@@ -1086,15 +1093,15 @@ function ConnectionTable({
         </tr>
       </thead>
       <tbody>
-        {connections.map(c => {
-          const isExcluded = excludedIds.has(c.id);
-          const matchesSearch = !q ||
+        {connections.filter(c => !q ||
             c.name.toLowerCase().includes(q) ||
             c.database.toLowerCase().includes(q) ||
-            c.dialect.toLowerCase().includes(q);
+            c.dialect.toLowerCase().includes(q)
+          ).map(c => {
+          const isExcluded = excludedIds.has(c.id);
           const status = refreshStatus[c.id] ?? 'idle';
           const errMsg = refreshError[c.id];
-          const dimClass = isExcluded ? 'opacity-30' : c.filtered ? 'opacity-50 italic' : !matchesSearch ? 'opacity-40' : '';
+          const dimClass = isExcluded ? 'opacity-30' : c.filtered ? 'opacity-50 italic' : '';
           return (
             <tr
               key={c.id}

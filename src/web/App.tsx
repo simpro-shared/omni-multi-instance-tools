@@ -26,7 +26,10 @@ export default function App() {
     <div className="h-screen flex overflow-hidden">
       <aside className="w-48 shrink-0 border-r border-zinc-800 flex flex-col h-full">
         <div className="px-4 py-4 border-b border-zinc-800">
-          <span className="text-sm font-semibold text-zinc-200 leading-tight">Omni Multi-Instance</span>
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded bg-blue-500 shrink-0" />
+            <span className="text-sm font-semibold text-zinc-100 leading-tight">Omni Multi-Instance</span>
+          </div>
         </div>
         <nav className="flex-1 py-3 flex flex-col gap-0.5 px-2">
           <SideNavLink to="/dashboard">Dashboard</SideNavLink>
@@ -70,10 +73,10 @@ function SideNavLink({ to, children }: { to: string; children: React.ReactNode }
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `px-3 py-1.5 rounded text-sm transition-colors ${
+        `py-1.5 rounded text-sm transition-colors ${
           isActive
-            ? 'bg-zinc-800 text-zinc-100'
-            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+            ? 'pl-[10px] pr-3 bg-zinc-800/70 text-white border-l-2 border-blue-400'
+            : 'px-3 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
         }`
       }
     >
