@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -63,6 +63,48 @@ function lsGetExcluded(instanceId: string): Set<string> {
 
 function lsSetExcluded(instanceId: string, excluded: Set<string>): void {
   localStorage.setItem(lsKey.excluded(instanceId), JSON.stringify([...excluded]));
+}
+
+// --- Date range helpers ---
+
+function endOfDay(dateStr: string): Date {
+  const d = new Date(dateStr);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function DateRangePicker({
+  from,
+  to,
+  onChange,
+}: {
+  from: string;
+  to: string;
+  onChange: (from: string, to: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="text-zinc-500 shrink-0">Date range:</span>
+      <input
+        type="date"
+        value={from}
+        onChange={e => onChange(e.target.value, to)}
+        className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-zinc-200 focus:outline-none focus:border-blue-500/60 [color-scheme:dark]"
+      />
+      <span className="text-zinc-600">–</span>
+      <input
+        type="date"
+        value={to}
+        onChange={e => onChange(from, e.target.value)}
+        className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-zinc-200 focus:outline-none focus:border-blue-500/60 [color-scheme:dark]"
+      />
+      {(from || to) && (
+        <button onClick={() => onChange('', '')} className="text-zinc-600 hover:text-zinc-400 ml-1">
+          clear
+        </button>
+      )}
+    </div>
+  );
 }
 
 // --- Dashboard ---
@@ -265,12 +307,21 @@ function UsersTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [globalSearch, setGlobalSearch] = useState('');
   const [search, setSearch] = useState<Record<string, string>>({});
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   useEffect(() => {
     if (allData) lsSetCache(lsKey.usersCache, allData, dataUpdatedAt);
   }, [allData, dataUpdatedAt]);
 
-  const data = allData;
+  const data = useMemo(() => {
+    if (!allData || !dateTo) return allData;
+    const end = endOfDay(dateTo);
+    return allData.map(inst => ({
+      ...inst,
+      users: inst.users.filter(u => !u.createdAt || new Date(u.createdAt) <= end),
+    }));
+  }, [allData, dateTo]);
 
   const toggleExpand = (id: string) =>
     setExpanded(prev => {
@@ -340,6 +391,12 @@ function UsersTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
           <ElapsedLabel timestampMs={dataUpdatedAt} />
         </div>
       </div>
+
+      <DateRangePicker
+        from={dateFrom}
+        to={dateTo}
+        onChange={(f, t) => { setDateFrom(f); setDateTo(t); }}
+      />
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <StatCard label="Instances" value={data.length} />
@@ -833,7 +890,7 @@ function UsageBarChart({ data, color }: { data: { label: string; count: number }
           labelStyle={{ color: '#a1a1aa', marginBottom: 2 }}
         />
         <Bar dataKey="count" fill={color} radius={[3, 3, 0, 0]} name="Users">
-          <LabelList dataKey="count" position="top" style={{ fill: '#a1a1aa', fontSize: 11 }} formatter={(v: number) => v === 0 ? '' : v} />
+          <LabelList dataKey="count" position="top" style={{ fill: '#a1a1aa', fontSize: 11 }} formatter={(v: unknown) => (v as number) === 0 ? '' : (v as number)} />
         </Bar>
       </ReBarChart>
     </ResponsiveContainer>
