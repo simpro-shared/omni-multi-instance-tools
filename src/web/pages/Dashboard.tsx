@@ -309,6 +309,7 @@ function UsersTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
   const [search, setSearch] = useState<Record<string, string>>({});
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [drawer, setDrawer] = useState<{ title: string; rows: { primary: string; secondary?: string }[]; filteredRows?: { primary: string; secondary?: string }[] } | null>(null);
 
   useEffect(() => {
     if (allData) lsSetCache(lsKey.usersCache, allData, dataUpdatedAt);
@@ -365,15 +366,24 @@ function UsersTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
 
   const separatorMap = new Map(instances?.map(i => [i.id, i.entityGroupSeparator]) ?? []);
   const connectionsMap = new Map(connectionsData?.map(c => [c.instanceId, c.connections]) ?? []);
-  const { totalEntities, totalFilteredEntities } = data.reduce(
+  const { totalEntities, totalFilteredEntities, totalEntitiesNoUsers, totalFilteredEntitiesNoUsers } = data.reduce(
     (acc, inst) => {
       const sep = separatorMap.get(inst.instanceId);
       const activeKeys = new Set(Object.keys(groupUsersByGroup(inst.users.filter(u => !u.filtered), sep)));
       const filteredKeys = new Set(Object.keys(groupUsersByGroup(inst.users.filter(u => u.filtered), sep)));
       const filteredOnly = [...filteredKeys].filter(k => !activeKeys.has(k)).length;
-      return { totalEntities: acc.totalEntities + activeKeys.size, totalFilteredEntities: acc.totalFilteredEntities + filteredOnly };
+      const connections = connectionsMap.get(inst.instanceId) ?? [];
+      const allEntityKeys = new Set(Object.keys(groupUsersByGroup(inst.users, sep)).map(k => k.toLowerCase()));
+      const dead = connections.filter(c => !c.filtered && !allEntityKeys.has(c.name.toLowerCase())).length;
+      const deadFiltered = connections.filter(c => c.filtered && !allEntityKeys.has(c.name.toLowerCase())).length;
+      return {
+        totalEntities: acc.totalEntities + activeKeys.size,
+        totalFilteredEntities: acc.totalFilteredEntities + filteredOnly,
+        totalEntitiesNoUsers: acc.totalEntitiesNoUsers + dead,
+        totalFilteredEntitiesNoUsers: acc.totalFilteredEntitiesNoUsers + deadFiltered,
+      };
     },
-    { totalEntities: 0, totalFilteredEntities: 0 }
+    { totalEntities: 0, totalFilteredEntities: 0, totalEntitiesNoUsers: 0, totalFilteredEntitiesNoUsers: 0 }
   );
 
   return (
@@ -398,11 +408,58 @@ function UsersTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
         onChange={(f, t) => { setDateFrom(f); setDateTo(t); }}
       />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <StatCard label="Instances" value={data.length} />
-        <StatCard label="Total Embed Users" value={totalUsers} filtered={totalFilteredUsers || undefined} />
-        <StatCard label="Total Entities" value={totalEntities} filtered={totalFilteredEntities || undefined} />
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatCard label="Instances" value={data.length} onClick={() => setDrawer({
+          title: 'Instances',
+          rows: data.map(i => ({ primary: instances?.find(x => x.id === i.instanceId)?.name ?? i.instanceId })),
+        })} />
+        <StatCard label="Total Embed Users" value={totalUsers} filtered={totalFilteredUsers || undefined} onClick={() => setDrawer({
+          title: 'Embed Users',
+          rows: data.flatMap(inst => inst.users.filter(u => !u.filtered).map(u => ({
+            primary: u.displayName || u.embedExternalId,
+            secondary: instances?.find(x => x.id === inst.instanceId)?.name,
+          }))),
+          filteredRows: data.flatMap(inst => inst.users.filter(u => u.filtered).map(u => ({
+            primary: u.displayName || u.embedExternalId,
+            secondary: instances?.find(x => x.id === inst.instanceId)?.name,
+          }))),
+        })} />
+        <StatCard label="Total Entities" value={totalEntities} filtered={totalFilteredEntities || undefined} onClick={() => setDrawer({
+          title: 'Entities',
+          rows: data.flatMap(inst => {
+            const sep = separatorMap.get(inst.instanceId);
+            const instName = instances?.find(x => x.id === inst.instanceId)?.name;
+            const activeKeys = new Set(Object.keys(groupUsersByGroup(inst.users.filter(u => !u.filtered), sep)));
+            return [...activeKeys].sort().map(e => ({ primary: e, secondary: instName }));
+          }),
+          filteredRows: data.flatMap(inst => {
+            const sep = separatorMap.get(inst.instanceId);
+            const instName = instances?.find(x => x.id === inst.instanceId)?.name;
+            const activeKeys = new Set(Object.keys(groupUsersByGroup(inst.users.filter(u => !u.filtered), sep)));
+            const filteredKeys = Object.keys(groupUsersByGroup(inst.users.filter(u => u.filtered), sep));
+            return filteredKeys.filter(k => !activeKeys.has(k)).sort().map(e => ({ primary: e, secondary: instName }));
+          }),
+        })} />
+        <StatCard label="Entities with No Users" value={totalEntitiesNoUsers} highlight={totalEntitiesNoUsers > 0} filtered={totalFilteredEntitiesNoUsers || undefined} onClick={() => setDrawer({
+          title: 'Entities with No Users',
+          rows: data.flatMap(inst => {
+            const sep = separatorMap.get(inst.instanceId);
+            const instName = instances?.find(x => x.id === inst.instanceId)?.name;
+            const allEntityKeys = new Set(Object.keys(groupUsersByGroup(inst.users, sep)).map(k => k.toLowerCase()));
+            const connections = connectionsMap.get(inst.instanceId) ?? [];
+            return connections.filter(c => !c.filtered && !allEntityKeys.has(c.name.toLowerCase())).map(c => ({ primary: c.name, secondary: instName }));
+          }),
+          filteredRows: data.flatMap(inst => {
+            const sep = separatorMap.get(inst.instanceId);
+            const instName = instances?.find(x => x.id === inst.instanceId)?.name;
+            const allEntityKeys = new Set(Object.keys(groupUsersByGroup(inst.users, sep)).map(k => k.toLowerCase()));
+            const connections = connectionsMap.get(inst.instanceId) ?? [];
+            return connections.filter(c => c.filtered && !allEntityKeys.has(c.name.toLowerCase())).map(c => ({ primary: c.name, secondary: instName }));
+          }),
+        })} />
       </div>
+
+      {drawer && <KpiDrawer drawer={drawer} onClose={() => setDrawer(null)} />}
 
       <UserUsageChart data={data} />
 
@@ -838,21 +895,30 @@ function GlobalUserResults({
 // --- Usage chart ---
 
 function computeWeeklyLogins(users: EmbedUserStat[]): { label: string; count: number }[] {
-  const now = Date.now();
-  const msWeek = 7 * 86_400_000;
+  const now = new Date();
+  const msDay = 86_400_000;
+  const msWeek = 7 * msDay;
+  // Align to Monday of current week
+  const dayOfWeek = (now.getDay() + 6) % 7; // Mon=0 ... Sun=6
+  const currentMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
   return Array.from({ length: 12 }, (_, i) => {
-    const start = now - (12 - i) * msWeek;
-    const end = start + msWeek;
-    const d = new Date(start);
+    const start = new Date(currentMonday.getTime() - (11 - i) * msWeek);
+    const end = new Date(start.getTime() + msWeek);
     return {
-      label: `${d.getMonth() + 1}/${d.getDate()}`,
+      label: `${start.getMonth() + 1}/${start.getDate()}`,
       count: users.filter(u => {
         if (!u.lastLogin) return false;
         const t = new Date(u.lastLogin).getTime();
-        return t >= start && t < end;
+        return t >= start.getTime() && t < end.getTime();
       }).length,
     };
   });
+}
+
+function trimLeadingZeros(data: { label: string; count: number }[]): { label: string; count: number }[] {
+  const firstNonZero = data.findIndex(d => d.count > 0);
+  if (firstNonZero <= 0) return data;
+  return data.slice(Math.max(0, firstNonZero - 1));
 }
 
 function computeMonthlySignups(users: EmbedUserStat[]): { label: string; count: number }[] {
@@ -916,8 +982,8 @@ const UserUsageChart = memo(function UserUsageChart({ data }: { data: InstanceEm
   const active30 = allUsers.filter(u => u.lastLogin && now - new Date(u.lastLogin).getTime() < 30 * msDay).length;
   const active90 = allUsers.filter(u => u.lastLogin && now - new Date(u.lastLogin).getTime() < 90 * msDay).length;
   const neverLogged = allUsers.filter(u => !u.lastLogin).length;
-  const weeklyLogins = computeWeeklyLogins(allUsers);
-  const monthlySignups = computeMonthlySignups(allUsers);
+  const weeklyLogins = trimLeadingZeros(computeWeeklyLogins(allUsers));
+  const monthlySignups = trimLeadingZeros(computeMonthlySignups(allUsers));
 
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 flex flex-col gap-4">
@@ -930,11 +996,11 @@ const UserUsageChart = memo(function UserUsageChart({ data }: { data: InstanceEm
       </div>
       <div className="grid grid-cols-2 gap-6">
         <div>
-          <p className="text-xs text-zinc-600 mb-1">Logins per week — last 12 weeks</p>
+          <p className="text-xs text-zinc-600 mb-1">Logins per week — last {weeklyLogins.length} weeks</p>
           <UsageBarChart data={weeklyLogins} color="#3b82f6" />
         </div>
         <div>
-          <p className="text-xs text-zinc-600 mb-1">New users per month — last 12 months</p>
+          <p className="text-xs text-zinc-600 mb-1">New users per month — last {monthlySignups.length} months</p>
           <UsageBarChart data={monthlySignups} color="#10b981" />
         </div>
       </div>
@@ -942,11 +1008,76 @@ const UserUsageChart = memo(function UserUsageChart({ data }: { data: InstanceEm
   );
 });
 
+// --- KPI Drawer ---
+
+type DrawerRow = { primary: string; secondary?: string };
+type DrawerData = { title: string; rows: DrawerRow[]; filteredRows?: DrawerRow[] };
+
+function DrawerSection({ label, rows, dimmed }: { label: string; rows: DrawerRow[]; dimmed?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const text = rows.map(r => r.secondary ? `${r.primary}\t${r.secondary}` : r.primary).join('\n');
+    navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  };
+  return (
+    <div className="border-b border-zinc-800">
+      <button
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-800/50 transition-colors text-left"
+        onClick={() => setOpen(v => !v)}
+      >
+        <span className={`text-xs font-medium uppercase tracking-wider ${dimmed ? 'text-zinc-500' : 'text-zinc-300'}`}>{label}</span>
+        <div className="flex items-center gap-2">
+          <span
+            className="text-zinc-500 hover:text-zinc-300 text-xs px-1.5 py-0.5 rounded hover:bg-zinc-700 transition-colors"
+            onClick={copy}
+          >{copied ? 'copied!' : 'copy'}</span>
+          <span className="text-zinc-500 text-xs">{open ? '▲' : '▼'}</span>
+        </div>
+      </button>
+      {open && (
+        <div className={`divide-y divide-zinc-800/60 ${dimmed ? 'opacity-50' : ''}`}>
+          {rows.map((row, i) => (
+            <div key={i} className="px-4 py-2.5">
+              <div className={`text-sm ${dimmed ? 'text-zinc-400 italic' : 'text-zinc-200'}`}>{row.primary}</div>
+              {row.secondary && <div className="text-xs text-zinc-500 mt-0.5">{row.secondary}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KpiDrawer({ drawer, onClose }: { drawer: DrawerData; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative w-full max-w-md bg-zinc-900 border-l border-zinc-800 flex flex-col h-full shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+          <span className="text-sm font-medium text-zinc-200">{drawer.title}</span>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200 text-lg leading-none">✕</button>
+        </div>
+        <div className="overflow-y-auto flex-1">
+          <DrawerSection label={`Active (${drawer.rows.length})`} rows={drawer.rows} />
+          {!!drawer.filteredRows?.length && (
+            <DrawerSection label={`Filtered out (${drawer.filteredRows.length})`} rows={drawer.filteredRows} dimmed />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- Sub-components ---
 
-function StatCard({ label, value, highlight, filtered }: { label: string; value: number; highlight?: boolean; filtered?: number }) {
+function StatCard({ label, value, highlight, filtered, onClick }: { label: string; value: number; highlight?: boolean; filtered?: number; onClick?: () => void }) {
   return (
-    <div className={`rounded-lg border border-zinc-800 bg-zinc-900 p-4 border-t-2 ${highlight ? 'border-t-amber-500/70' : 'border-t-blue-500/30'}`}>
+    <div
+      className={`rounded-lg border border-zinc-800 bg-zinc-900 p-4 border-t-2 ${highlight ? 'border-t-amber-500/70' : 'border-t-blue-500/30'} ${onClick ? 'cursor-pointer hover:bg-zinc-800/60 transition-colors' : ''}`}
+      onClick={onClick}
+    >
       <div className={`text-2xl font-bold ${highlight ? 'text-amber-400' : 'text-zinc-100'}`}>
         {value}
       </div>
