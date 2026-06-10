@@ -627,11 +627,11 @@ function UserInstanceCard({
           ) : (
             <>
               <span className="text-zinc-400 whitespace-nowrap">
-                <span className="text-zinc-200 font-medium">{inst.users.length}</span>
+                <span className="text-zinc-200 font-medium">{inst.users.length - (inst.filteredCount ?? 0)}</span>
                 {(inst.filteredCount ?? 0) > 0 && (
                   <span className="text-zinc-600"> ({inst.filteredCount} filtered)</span>
                 )}
-                {' '}user{inst.users.length !== 1 ? 's' : ''}
+                {' '}user{(inst.users.length - (inst.filteredCount ?? 0)) !== 1 ? 's' : ''}
               </span>
               <span className="text-zinc-600 whitespace-nowrap">
                 {activeEntityCount} {activeEntityCount !== 1 ? 'entities' : 'entity'}

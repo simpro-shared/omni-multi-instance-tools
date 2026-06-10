@@ -51,4 +51,5 @@ function migrate(d: Database.Database): void {
   `);
   // add column for existing DBs that predate this field
   try { d.exec(`ALTER TABLE jobs ADD COLUMN post_migration_actions TEXT`); } catch { /* already exists */ }
+  try { d.exec(`ALTER TABLE jobs ADD COLUMN post_migration_results TEXT`); } catch { /* already exists */ }
 }

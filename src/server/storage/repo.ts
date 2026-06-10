@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from './db.js';
-import type { Job, JobItem, JobItemKind, JobItemStatus, JobStatus, PostMigrationAction } from '../../shared/types.js';
+import type { Job, JobItem, JobItemKind, JobItemStatus, JobStatus, PostMigrationAction, PostMigrationActionResult } from '../../shared/types.js';
 
 interface JobRow {
   id: string;
@@ -14,6 +14,7 @@ interface JobRow {
   ended_at: number | null;
   parent_job_id: string | null;
   post_migration_actions: string | null;
+  post_migration_results: string | null;
 }
 
 interface ItemRow {
@@ -43,6 +44,7 @@ function rowToJob(r: JobRow): Job {
     endedAt: r.ended_at,
     parentJobId: r.parent_job_id,
     postMigrationActions: r.post_migration_actions ? (JSON.parse(r.post_migration_actions) as PostMigrationAction[]) : [],
+    postMigrationResults: r.post_migration_results ? (JSON.parse(r.post_migration_results) as PostMigrationActionResult[]) : undefined,
   };
 }
 
@@ -157,13 +159,14 @@ export function updateItem(id: string, patch: Partial<Pick<JobItem, 'status' | '
   db.prepare(`UPDATE job_items SET ${fields.join(', ')} WHERE id = ?`).run(...values);
 }
 
-export function updateJob(id: string, patch: Partial<Pick<Job, 'status' | 'startedAt' | 'endedAt'>>): void {
+export function updateJob(id: string, patch: Partial<Pick<Job, 'status' | 'startedAt' | 'endedAt' | 'postMigrationResults'>>): void {
   const db = getDb();
   const fields: string[] = [];
   const values: unknown[] = [];
   if (patch.status !== undefined) { fields.push('status = ?'); values.push(patch.status); }
   if (patch.startedAt !== undefined) { fields.push('started_at = ?'); values.push(patch.startedAt); }
   if (patch.endedAt !== undefined) { fields.push('ended_at = ?'); values.push(patch.endedAt); }
+  if (patch.postMigrationResults !== undefined) { fields.push('post_migration_results = ?'); values.push(JSON.stringify(patch.postMigrationResults)); }
   if (fields.length === 0) return;
   values.push(id);
   db.prepare(`UPDATE jobs SET ${fields.join(', ')} WHERE id = ?`).run(...values);

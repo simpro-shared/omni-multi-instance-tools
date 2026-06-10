@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { streamJob } from '../lib/sse';
-import type { JobItem, JobItemStatus } from '../../shared/types';
+import type { JobItem, JobItemStatus, PostMigrationActionResult } from '../../shared/types';
 
 export default function JobDetail() {
   const { id = '' } = useParams();
@@ -14,6 +14,7 @@ export default function JobDetail() {
     queryFn: () => api.getJob(id),
   });
   const [liveItems, setLiveItems] = useState<Record<string, Partial<JobItem>>>({});
+  const [postMigrationRunning, setPostMigrationRunning] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -25,6 +26,13 @@ export default function JobDetail() {
         }));
       } else if (evt.type === 'job') {
         qc.invalidateQueries({ queryKey: ['job', id] });
+      } else if (evt.type === 'post-migration') {
+        if (evt.status === 'running') {
+          setPostMigrationRunning(true);
+        } else {
+          setPostMigrationRunning(false);
+          qc.invalidateQueries({ queryKey: ['job', id] });
+        }
       }
     });
     return stop;
@@ -73,6 +81,22 @@ export default function JobDetail() {
           )}
         </div>
       </header>
+
+      {(postMigrationRunning || (data.postMigrationActions?.length > 0 && data.postMigrationResults)) && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded p-3 space-y-2">
+          <div className="flex items-center gap-2 text-xs text-zinc-400">
+            <span className="font-medium text-zinc-300">Post-migration actions</span>
+            {postMigrationRunning && <span className="text-amber-400 animate-pulse">running…</span>}
+          </div>
+          {data.postMigrationResults && (
+            <ul className="space-y-1">
+              {data.postMigrationResults.map((r, i) => (
+                <PostMigrationResultRow key={i} result={r} />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         {Object.entries(byDest).map(([destId, list]) => (
@@ -124,4 +148,27 @@ function jobStatusColor(s: string): string {
   if (s === 'partial') return 'text-amber-400';
   if (s === 'running') return 'text-blue-400';
   return 'text-zinc-400';
+}
+
+function PostMigrationResultRow({ result: r }: { result: PostMigrationActionResult }) {
+  const [open, setOpen] = useState(false);
+  const hasBody = !!(r.responseBody || r.error);
+  return (
+    <li className={`text-xs rounded ${r.ok ? 'bg-emerald-950' : 'bg-red-950'}`}>
+      <button
+        className={`w-full flex items-center gap-2 px-2 py-1 text-left ${r.ok ? 'text-emerald-300' : 'text-red-300'}`}
+        onClick={() => hasBody && setOpen(v => !v)}
+      >
+        <span className="font-mono">{r.method}</span>
+        <span className="font-mono flex-1 truncate">{r.url}</span>
+        <span>{r.status ?? 'network error'}</span>
+        {hasBody && <span className="opacity-50">{open ? '▾' : '▸'}</span>}
+      </button>
+      {open && (
+        <pre className={`px-2 pb-2 text-xs overflow-x-auto whitespace-pre-wrap break-all ${r.ok ? 'text-emerald-400/80' : 'text-red-400/80'}`}>
+          {r.error ?? r.responseBody}
+        </pre>
+      )}
+    </li>
+  );
 }

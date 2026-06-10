@@ -85,6 +85,7 @@ async function executeJob(job: Job): Promise<void> {
   publish({ jobId: job.id, type: 'job', status: finalStatus, at: endedAt });
 
   if (job.postMigrationActions?.length) {
+    publish({ jobId: job.id, type: 'post-migration', status: 'running', at: Date.now() });
     try {
       const actionResults = await runPostMigrationActions(job.postMigrationActions);
       for (const r of actionResults) {
@@ -93,9 +94,11 @@ async function executeJob(job: Job): Promise<void> {
         if (r.responseBody) console.log(`[post-migration] response:\n${r.responseBody}`);
         if (r.error) console.log(`[post-migration] error: ${r.error}`);
       }
+      updateJob(job.id, { postMigrationResults: actionResults });
     } catch (err) {
       console.warn(`[migrator] post-migration actions failed for job ${job.id}:`, err);
     }
+    publish({ jobId: job.id, type: 'post-migration', status: 'done', at: Date.now() });
   }
 }
 

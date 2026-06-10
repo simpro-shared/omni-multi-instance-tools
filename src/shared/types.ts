@@ -96,6 +96,7 @@ export interface Job {
   endedAt: number | null;
   parentJobId: string | null;
   postMigrationActions: PostMigrationAction[];
+  postMigrationResults?: PostMigrationActionResult[];
 }
 
 export interface JobWithItems extends Job {
@@ -130,8 +131,8 @@ export interface CreateJobInput {
 export interface JobEvent {
   jobId: string;
   itemId?: string;
-  type: 'item' | 'job';
-  status: JobItemStatus | JobStatus;
+  type: 'item' | 'job' | 'post-migration';
+  status: JobItemStatus | JobStatus | 'done';
   error?: string;
   at: number;
 }
