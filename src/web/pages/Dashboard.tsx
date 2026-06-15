@@ -309,7 +309,21 @@ function UsersTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
   const [search, setSearch] = useState<Record<string, string>>({});
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [drawer, setDrawer] = useState<{ title: string; rows: { primary: string; secondary?: string }[]; filteredRows?: { primary: string; secondary?: string }[] } | null>(null);
+  const [drawer, setDrawer] = useState<DrawerData | null>(null);
+  const [appDisabled, setAppDisabled] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    api.getAppDisabled().then(r => setAppDisabled(new Set(r.keys))).catch(() => {});
+  }, []);
+
+  const toggleAppDisabled = (key: string) => {
+    setAppDisabled(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      api.setAppDisabled([...next]).catch(() => {});
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (allData) lsSetCache(lsKey.usersCache, allData, dataUpdatedAt);
@@ -411,30 +425,30 @@ function UsersTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard label="Instances" value={data.length} onClick={() => setDrawer({
           title: 'Instances',
-          rows: data.map(i => ({ primary: instances?.find(x => x.id === i.instanceId)?.name ?? i.instanceId })),
+          rows: data.map(i => ({ primary: instances?.find(x => x.id === i.instanceId)?.label ?? i.instanceId })),
         })} />
         <StatCard label="Total Embed Users" value={totalUsers} filtered={totalFilteredUsers || undefined} onClick={() => setDrawer({
           title: 'Embed Users',
           rows: data.flatMap(inst => inst.users.filter(u => !u.filtered).map(u => ({
             primary: u.displayName || u.embedExternalId,
-            secondary: instances?.find(x => x.id === inst.instanceId)?.name,
+            secondary: instances?.find(x => x.id === inst.instanceId)?.label,
           }))),
           filteredRows: data.flatMap(inst => inst.users.filter(u => u.filtered).map(u => ({
             primary: u.displayName || u.embedExternalId,
-            secondary: instances?.find(x => x.id === inst.instanceId)?.name,
+            secondary: instances?.find(x => x.id === inst.instanceId)?.label,
           }))),
         })} />
         <StatCard label="Total Entities" value={totalEntities} filtered={totalFilteredEntities || undefined} onClick={() => setDrawer({
           title: 'Entities',
           rows: data.flatMap(inst => {
             const sep = separatorMap.get(inst.instanceId);
-            const instName = instances?.find(x => x.id === inst.instanceId)?.name;
+            const instName = instances?.find(x => x.id === inst.instanceId)?.label;
             const activeKeys = new Set(Object.keys(groupUsersByGroup(inst.users.filter(u => !u.filtered), sep)));
             return [...activeKeys].sort().map(e => ({ primary: e, secondary: instName }));
           }),
           filteredRows: data.flatMap(inst => {
             const sep = separatorMap.get(inst.instanceId);
-            const instName = instances?.find(x => x.id === inst.instanceId)?.name;
+            const instName = instances?.find(x => x.id === inst.instanceId)?.label;
             const activeKeys = new Set(Object.keys(groupUsersByGroup(inst.users.filter(u => !u.filtered), sep)));
             const filteredKeys = Object.keys(groupUsersByGroup(inst.users.filter(u => u.filtered), sep));
             return filteredKeys.filter(k => !activeKeys.has(k)).sort().map(e => ({ primary: e, secondary: instName }));
@@ -442,24 +456,25 @@ function UsersTab({ nav }: { nav: ReturnType<typeof useNavigate> }) {
         })} />
         <StatCard label="Entities with No Users" value={totalEntitiesNoUsers} highlight={totalEntitiesNoUsers > 0} filtered={totalFilteredEntitiesNoUsers || undefined} onClick={() => setDrawer({
           title: 'Entities with No Users',
+          showAppDisabledCheckbox: true,
           rows: data.flatMap(inst => {
             const sep = separatorMap.get(inst.instanceId);
-            const instName = instances?.find(x => x.id === inst.instanceId)?.name;
+            const instName = instances?.find(x => x.id === inst.instanceId)?.label;
             const allEntityKeys = new Set(Object.keys(groupUsersByGroup(inst.users, sep)).map(k => k.toLowerCase()));
             const connections = connectionsMap.get(inst.instanceId) ?? [];
-            return connections.filter(c => !c.filtered && !allEntityKeys.has(c.name.toLowerCase())).map(c => ({ primary: c.name, secondary: instName }));
+            return connections.filter(c => !c.filtered && !allEntityKeys.has(c.name.toLowerCase())).map(c => ({ primary: c.name, secondary: instName, instanceId: inst.instanceId }));
           }),
           filteredRows: data.flatMap(inst => {
             const sep = separatorMap.get(inst.instanceId);
-            const instName = instances?.find(x => x.id === inst.instanceId)?.name;
+            const instName = instances?.find(x => x.id === inst.instanceId)?.label;
             const allEntityKeys = new Set(Object.keys(groupUsersByGroup(inst.users, sep)).map(k => k.toLowerCase()));
             const connections = connectionsMap.get(inst.instanceId) ?? [];
-            return connections.filter(c => c.filtered && !allEntityKeys.has(c.name.toLowerCase())).map(c => ({ primary: c.name, secondary: instName }));
+            return connections.filter(c => c.filtered && !allEntityKeys.has(c.name.toLowerCase())).map(c => ({ primary: c.name, secondary: instName, instanceId: inst.instanceId }));
           }),
         })} />
       </div>
 
-      {drawer && <KpiDrawer drawer={drawer} onClose={() => setDrawer(null)} />}
+      {drawer && <KpiDrawer drawer={drawer} onClose={() => setDrawer(null)} appDisabled={appDisabled} onToggleAppDisabled={toggleAppDisabled} />}
 
       <UserUsageChart data={data} />
 
@@ -1010,10 +1025,16 @@ const UserUsageChart = memo(function UserUsageChart({ data }: { data: InstanceEm
 
 // --- KPI Drawer ---
 
-type DrawerRow = { primary: string; secondary?: string };
-type DrawerData = { title: string; rows: DrawerRow[]; filteredRows?: DrawerRow[] };
+type DrawerRow = { primary: string; secondary?: string; instanceId?: string };
+type DrawerData = { title: string; rows: DrawerRow[]; filteredRows?: DrawerRow[]; showAppDisabledCheckbox?: boolean };
 
-function DrawerSection({ label, rows, dimmed }: { label: string; rows: DrawerRow[]; dimmed?: boolean }) {
+function DrawerSection({ label, rows, dimmed, appDisabled, onToggleAppDisabled }: {
+  label: string;
+  rows: DrawerRow[];
+  dimmed?: boolean;
+  appDisabled?: Set<string>;
+  onToggleAppDisabled?: (key: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const copy = (e: React.MouseEvent) => {
@@ -1021,13 +1042,18 @@ function DrawerSection({ label, rows, dimmed }: { label: string; rows: DrawerRow
     const text = rows.map(r => r.secondary ? `${r.primary}\t${r.secondary}` : r.primary).join('\n');
     navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
   };
+  const appOffCount = appDisabled
+    ? rows.filter(r => r.instanceId && appDisabled.has(`${r.instanceId}::${r.primary}`)).length
+    : 0;
   return (
     <div className="border-b border-zinc-800">
       <button
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-800/50 transition-colors text-left"
         onClick={() => setOpen(v => !v)}
       >
-        <span className={`text-xs font-medium uppercase tracking-wider ${dimmed ? 'text-zinc-500' : 'text-zinc-300'}`}>{label}</span>
+        <span className={`text-xs font-medium uppercase tracking-wider ${dimmed ? 'text-zinc-500' : 'text-zinc-300'}`}>
+          {label}{appOffCount > 0 && <span className="ml-2 normal-case text-amber-500/70">{appOffCount} app off</span>}
+        </span>
         <div className="flex items-center gap-2">
           <span
             className="text-zinc-500 hover:text-zinc-300 text-xs px-1.5 py-0.5 rounded hover:bg-zinc-700 transition-colors"
@@ -1038,19 +1064,45 @@ function DrawerSection({ label, rows, dimmed }: { label: string; rows: DrawerRow
       </button>
       {open && (
         <div className={`divide-y divide-zinc-800/60 ${dimmed ? 'opacity-50' : ''}`}>
-          {rows.map((row, i) => (
-            <div key={i} className="px-4 py-2.5">
-              <div className={`text-sm ${dimmed ? 'text-zinc-400 italic' : 'text-zinc-200'}`}>{row.primary}</div>
-              {row.secondary && <div className="text-xs text-zinc-500 mt-0.5">{row.secondary}</div>}
-            </div>
-          ))}
+          {rows.map((row, i) => {
+            const key = row.instanceId ? `${row.instanceId}::${row.primary}` : null;
+            const isDisabled = key && appDisabled?.has(key);
+            return (
+              <div key={i} className="px-4 py-2.5 flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className={`text-sm ${dimmed ? 'text-zinc-400 italic' : 'text-zinc-200'}`}>{row.primary}</div>
+                  {row.secondary && <div className="text-xs text-zinc-500 mt-0.5">{row.secondary}</div>}
+                </div>
+                {onToggleAppDisabled && key && (
+                  <label
+                    className="flex items-center gap-1.5 shrink-0 cursor-pointer mt-0.5"
+                    title={isDisabled ? 'App disabled (click to unmark)' : 'Mark app as disabled'}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!isDisabled}
+                      onChange={() => onToggleAppDisabled(key)}
+                      className="w-3 h-3 accent-amber-500"
+                    />
+                    <span className="text-xs text-zinc-600">App off</span>
+                  </label>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-function KpiDrawer({ drawer, onClose }: { drawer: DrawerData; onClose: () => void }) {
+function KpiDrawer({ drawer, onClose, appDisabled, onToggleAppDisabled }: {
+  drawer: DrawerData;
+  onClose: () => void;
+  appDisabled?: Set<string>;
+  onToggleAppDisabled?: (key: string) => void;
+}) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
@@ -1062,7 +1114,13 @@ function KpiDrawer({ drawer, onClose }: { drawer: DrawerData; onClose: () => voi
         <div className="overflow-y-auto flex-1">
           <DrawerSection label={`Active (${drawer.rows.length})`} rows={drawer.rows} />
           {!!drawer.filteredRows?.length && (
-            <DrawerSection label={`Filtered out (${drawer.filteredRows.length})`} rows={drawer.filteredRows} dimmed />
+            <DrawerSection
+              label={`Filtered out (${drawer.filteredRows.length})`}
+              rows={drawer.filteredRows}
+              dimmed
+              appDisabled={drawer.showAppDisabledCheckbox ? appDisabled : undefined}
+              onToggleAppDisabled={drawer.showAppDisabledCheckbox ? onToggleAppDisabled : undefined}
+            />
           )}
         </div>
       </div>

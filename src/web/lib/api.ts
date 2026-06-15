@@ -169,4 +169,13 @@ export const api = {
       body: JSON.stringify({ modelId }),
     }).then(j<{ jobId: string; modelId: string; status: string }>),
 
+  getAppDisabled: () =>
+    fetch('/api/dashboard/app-disabled').then(j<{ keys: string[] }>),
+  setAppDisabled: (keys: string[]) =>
+    fetch('/api/dashboard/app-disabled', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys }),
+    }).then(j<{ ok: true }>),
+
 };

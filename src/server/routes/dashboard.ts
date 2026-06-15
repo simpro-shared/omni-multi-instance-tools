@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { getInstance, isUnlocked, listInstances } from '../storage/vault.js';
+import { getInstance, isUnlocked, listInstances, getAppDisabledEntities, setAppDisabledEntities } from '../storage/vault.js';
 import { OmniClient } from '../omni/client.js';
 
 export interface ConnectionStat {
@@ -174,5 +174,18 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return stats;
+  });
+
+  app.get('/api/dashboard/app-disabled', async (_req, reply) => {
+    if (!isUnlocked()) return reply.code(423).send({ error: 'vault locked' });
+    return { keys: getAppDisabledEntities() };
+  });
+
+  app.post('/api/dashboard/app-disabled', async (req, reply) => {
+    if (!isUnlocked()) return reply.code(423).send({ error: 'vault locked' });
+    const { keys } = req.body as { keys: string[] };
+    if (!Array.isArray(keys)) return reply.code(400).send({ error: 'keys must be array' });
+    setAppDisabledEntities(keys);
+    return { ok: true };
   });
 }

@@ -7,6 +7,7 @@ import type { DashboardFilter, Instance, InstancePublic, PostMigrationAction } f
 interface VaultData {
   version: 1;
   instances: Instance[];
+  appDisabledEntities?: string[];
 }
 
 const VAULT_PATH = process.env.VAULT_PATH ?? './data/vault.enc';
@@ -161,6 +162,16 @@ export function setInstanceDashboardFilter(id: string, filter: DashboardFilter):
   const idx = c.instances.findIndex(i => i.id === id);
   if (idx === -1) throw new Error('instance not found');
   c.instances[idx] = { ...c.instances[idx]!, dashboardFilter: filter };
+  persist();
+}
+
+export function getAppDisabledEntities(): string[] {
+  return requireCache().appDisabledEntities ?? [];
+}
+
+export function setAppDisabledEntities(keys: string[]): void {
+  const c = requireCache();
+  c.appDisabledEntities = keys;
   persist();
 }
 
