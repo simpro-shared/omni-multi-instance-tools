@@ -1,3 +1,11 @@
+overrides:
+  fast-uri: ^3.1.5
+  brace-expansion: ^5.0.9
+  find-my-way: ^9.7.0
+  shell-quote: ^1.9.0
+  "@babel/core": ^7.29.6
+  postcss: ^8.5.18
+
 allowBuilds:
   better-sqlite3: true
   esbuild: true
