@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import staticPlugin from '@fastify/static';
+import rateLimit from '@fastify/rate-limit';
 import { unlockRoutes } from './routes/unlock.js';
 import { instanceRoutes } from './routes/instances.js';
 import { folderRoutes } from './routes/folders.js';
@@ -25,6 +26,13 @@ async function main(): Promise<void> {
       error: err.name || 'Error',
       message: err.message,
     });
+  });
+
+  // Generous global default; individual routes tighten this where it matters.
+  await app.register(rateLimit, {
+    global: true,
+    max: 300,
+    timeWindow: '1 minute',
   });
 
   getDb();
