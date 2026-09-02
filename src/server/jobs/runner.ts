@@ -174,7 +174,7 @@ async function runDestination(
         const meta = sourceMeta.get(item.docId);
         if (!meta) throw new Error(`source metadata missing for ${item.docId}`);
         if (meta.description !== null && meta.description !== undefined && meta.description !== '') {
-          await destClient.patchDoc(newId, { description: meta.description, clearExistingDraft: true });
+          await destClient.patchDoc(newId, { description: meta.description, summary: 'migration: copy description from source', clearExistingDraft: true });
         }
         if (meta.labels.length > 0) {
           await ensureDestLabels();

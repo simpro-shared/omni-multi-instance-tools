@@ -197,8 +197,21 @@ export class OmniClient {
     return { name: data.name, description: data.description ?? null };
   }
 
-  async patchDoc(identifier: string, body: { name?: string; description?: string | null; clearExistingDraft?: boolean }): Promise<void> {
-    await this.request('PATCH', `/api/v1/documents/${encodeURIComponent(identifier)}`, { body });
+  // PATCH /api/v1/documents/{identifier} was removed by Omni on 2026-07-31 (returns 410).
+  // Metadata edits now go through the v2 draft workflow: patch a draft, then publish it.
+  // `clearExistingDraft` discards any existing main-workspace draft first (DELETE /api/v1/documents/{id}/draft).
+  async patchDoc(identifier: string, body: { name?: string; description?: string | null; summary?: string; clearExistingDraft?: boolean }): Promise<void> {
+    const id = encodeURIComponent(identifier);
+    const { clearExistingDraft, ...patch } = body;
+    if (clearExistingDraft) {
+      try {
+        await this.request('DELETE', `/api/v1/documents/${id}/draft`);
+      } catch (err) {
+        if (!(err instanceof OmniError && err.status === 404)) throw err;
+      }
+    }
+    await this.request('PATCH', `/api/v2/documents/${id}/draft`, { body: patch });
+    await this.request('POST', `/api/v2/documents/${id}/draft/publish`);
   }
 
   async listConnections(): Promise<OmniConnection[]> {
