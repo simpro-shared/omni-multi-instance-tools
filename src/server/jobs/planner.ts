@@ -71,6 +71,20 @@ export async function buildPlan(input: PlanInput): Promise<JobPlan> {
       steps.push({
         destId,
         destLabel: dest.label,
+        kind: 'models',
+        docId: doc.identifier,
+        docName: doc.name,
+      });
+      steps.push({
+        destId,
+        destLabel: dest.label,
+        kind: 'verify',
+        docId: doc.identifier,
+        docName: doc.name,
+      });
+      steps.push({
+        destId,
+        destLabel: dest.label,
         kind: 'meta',
         docId: doc.identifier,
         docName: doc.name,

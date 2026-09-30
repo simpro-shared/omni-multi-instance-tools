@@ -96,6 +96,8 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
         const docName = failed.find(f => f.docId === docId)?.docName ?? null;
         items.push({ jobId: child.id, destId, kind: 'export', docId, docName });
         items.push({ jobId: child.id, destId, kind: 'import', docId, docName });
+        items.push({ jobId: child.id, destId, kind: 'models', docId, docName });
+        items.push({ jobId: child.id, destId, kind: 'verify', docId, docName });
       }
     }
     createItems(items);

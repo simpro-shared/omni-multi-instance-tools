@@ -6,6 +6,8 @@ import type { OmniExportPayload } from '../omni/types.js';
 import { getItems, updateItem, updateJob } from '../storage/repo.js';
 import { publish } from './events.js';
 import { runPostMigrationActions } from './postMigration.js';
+import { copyQueryModels, pairQueryModels, rewriteSourceIds, verifyTiles } from './queryModels.js';
+import type { TargetBinding } from './queryModels.js';
 
 interface SourceMeta {
   description: string | null;
@@ -49,6 +51,8 @@ async function executeJob(job: Job): Promise<void> {
   }
 
   const exportCache = new Map<string, { payload: OmniExportPayload; hash: string }>();
+  // Source query-model YAML, shared across destinations so each file is read from the source once.
+  const sourceYamlCache = new Map<string, Record<string, string>>();
 
   const sourceMeta = new Map<string, SourceMeta>();
   const sourceLabelDefs = new Map<string, OmniLabel>();
@@ -74,7 +78,7 @@ async function executeJob(job: Job): Promise<void> {
 
   await Promise.all(
     Array.from(byDest.entries()).map(([destId, destItems]) =>
-      runDestination(job.id, destId, destItems, sourceClient, exportCache, sourceMeta, sourceLabelDefs),
+      runDestination(job.id, destId, destItems, sourceClient, exportCache, sourceYamlCache, sourceMeta, sourceLabelDefs),
     ),
   );
 
@@ -108,6 +112,7 @@ async function runDestination(
   items: JobItem[],
   sourceClient: OmniClient,
   exportCache: Map<string, { payload: OmniExportPayload; hash: string }>,
+  sourceYamlCache: Map<string, Record<string, string>>,
   sourceMeta: Map<string, SourceMeta>,
   sourceLabelDefs: Map<string, OmniLabel>,
 ): Promise<void> {
@@ -125,7 +130,25 @@ async function runDestination(
     for (const l of list) destLabels.add(l.name);
     destLabelsLoaded = true;
   };
-  const importedIdBySourceDoc = new Map<string, string>();
+  let target: TargetBinding | null = null;
+  const ensureTarget = async (): Promise<TargetBinding> => {
+    if (target) return target;
+    const model = await destClient.getModel(dest.modelId);
+    if (!model?.connectionId) throw new Error(`destination model ${dest.modelId} not found or has no connection`);
+    target = { sharedModelId: dest.modelId, connectionId: model.connectionId };
+    return target;
+  };
+  const importedBySourceDoc = new Map<string, { identifier: string; miniUuidMap: Record<string, string> }>();
+  // Re-export of each imported dashboard, reused by the models and verify steps.
+  const importedExports = new Map<string, OmniExportPayload>();
+  const importedExport = async (identifier: string): Promise<OmniExportPayload> => {
+    let payload = importedExports.get(identifier);
+    if (!payload) {
+      payload = await destClient.exportDoc(identifier);
+      importedExports.set(identifier, payload);
+    }
+    return payload;
+  };
 
   for (const item of items) {
     const startedAt = Date.now();
@@ -150,8 +173,9 @@ async function runDestination(
         const cached = exportCache.get(item.docId);
         if (!cached) throw new Error('export missing for import step (planner invariant violated)');
         const docName = item.docName ?? cached.payload.document?.name ?? 'Untitled';
+        const { payload: rewritten } = rewriteSourceIds(cached.payload, await ensureTarget());
         const imported = await destClient.importDoc({
-          exportPayload: cached.payload,
+          exportPayload: rewritten,
           baseModelId: dest.modelId,
           folderPath: dest.folderPath,
           documentName: docName,
@@ -166,10 +190,33 @@ async function runDestination(
         if (!newId) {
           throw new Error(`import succeeded but could not resolve destination identifier. raw response: ${JSON.stringify(imported.raw)}`);
         }
-        importedIdBySourceDoc.set(item.docId, newId);
+        importedBySourceDoc.set(item.docId, { identifier: newId, miniUuidMap: imported.miniUuidMap });
+      } else if (item.kind === 'models') {
+        if (!item.docId) throw new Error('models item missing docId');
+        const imported = importedBySourceDoc.get(item.docId);
+        if (!imported) throw new Error('no imported identifier available for query-model step');
+        const cached = exportCache.get(item.docId);
+        if (!cached) throw new Error('export missing for query-model step (planner invariant violated)');
+        const hasQueryModels = Object.keys(cached.payload.queryModels ?? {}).length > 0;
+        if (hasQueryModels) {
+          const pairs = pairQueryModels(cached.payload, await importedExport(imported.identifier), imported.miniUuidMap);
+          const copied = await copyQueryModels(sourceClient, destClient, pairs, sourceYamlCache);
+          console.log(`[migrator] ${dest.label} ${imported.identifier}: copied ${copied.filesWritten} file(s) into ${copied.queryModels} query model(s), rewrote CTE refs in ${copied.refsRewritten.length} file(s)`);
+          for (const w of copied.warnings) console.warn(`[migrator] ${dest.label} ${imported.identifier}: unresolved CTE ref ${w}`);
+        }
+      } else if (item.kind === 'verify') {
+        if (!item.docId) throw new Error('verify item missing docId');
+        const imported = importedBySourceDoc.get(item.docId);
+        if (!imported) throw new Error('no imported identifier available for verify step');
+        const result = await verifyTiles(destClient, await importedExport(imported.identifier));
+        for (const t of result.timeouts) console.warn(`[migrator] ${dest.label} ${imported.identifier}: tile "${t}" timed out; not verified`);
+        if (result.failures.length > 0) {
+          throw new Error(`${result.failures.length} of ${result.checked} tile(s) fail on the destination: ` +
+            result.failures.map(f => `"${f.tile}": ${f.error}`).join(' | '));
+        }
       } else if (item.kind === 'meta') {
         if (!item.docId) throw new Error('meta item missing docId');
-        const newId = importedIdBySourceDoc.get(item.docId);
+        const newId = importedBySourceDoc.get(item.docId)?.identifier;
         if (!newId) throw new Error('no imported identifier available for metadata step');
         const meta = sourceMeta.get(item.docId);
         if (!meta) throw new Error(`source metadata missing for ${item.docId}`);

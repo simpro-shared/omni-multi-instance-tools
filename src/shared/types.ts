@@ -60,7 +60,7 @@ export interface OmniLabel {
   isHomepageSection?: boolean;
 }
 
-export type JobItemKind = 'delete' | 'export' | 'import' | 'meta';
+export type JobItemKind = 'delete' | 'export' | 'import' | 'models' | 'verify' | 'meta';
 export type JobItemStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped';
 export type JobStatus =
   | 'pending'

@@ -1,9 +1,29 @@
+// Per-tab model that holds tab-only fields and CTE query views. The import API recreates these empty,
+// so their YAML is copied separately after import (see jobs/queryModels.ts).
+export interface OmniQueryModel {
+  id: string;
+  connection_id?: string;
+  base_model_id?: string;
+  environment_connection_id?: string | null;
+  model_kind?: string;
+  views?: unknown[];
+  [key: string]: unknown;
+}
+
+export interface OmniWorkbookModel {
+  id: string;
+  connection_id?: string;
+  base_model_id?: string;
+  environment_connection_id?: string | null;
+  [key: string]: unknown;
+}
+
 export interface OmniExportPayload {
   exportVersion?: string;
   document?: { name?: string; ephemeral?: string };
   dashboard?: unknown;
-  workbookModel?: unknown;
-  queryModels?: Record<string, unknown>;
+  workbookModel?: OmniWorkbookModel;
+  queryModels?: Record<string, OmniQueryModel>;
   fileUploads?: Record<string, unknown>;
   baseModelId?: string;
   identifier?: string;
@@ -13,6 +33,22 @@ export interface OmniExportPayload {
 export interface OmniImportResponse {
   documentId: string;
   identifier: string;
+  // Source query-presentation miniUuid → imported miniUuid. Used to pair each source tile with its imported tile.
+  miniUuidMap: Record<string, string>;
+}
+
+export interface OmniModelYaml {
+  files: Record<string, string>;
+  checksums?: Record<string, string>;
+}
+
+export interface OmniModelRecord {
+  id: string;
+  connectionId: string;
+  modelKind?: string;
+  name?: string;
+  baseModelId?: string | null;
+  [key: string]: unknown;
 }
 
 export interface OmniDocumentRecord {

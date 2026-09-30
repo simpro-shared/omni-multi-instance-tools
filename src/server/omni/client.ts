@@ -1,5 +1,5 @@
 import type { Instance, OmniDoc, OmniLabel } from '../../shared/types.js';
-import type { OmniConnection, OmniExportPayload, OmniImportResponse, OmniLabelsListResponse, OmniListResponse, OmniSchemaModel, ScimListResponse, ScimUser } from './types.js';
+import type { OmniConnection, OmniExportPayload, OmniImportResponse, OmniLabelsListResponse, OmniListResponse, OmniModelRecord, OmniModelYaml, OmniSchemaModel, ScimListResponse, ScimUser } from './types.js';
 
 const TIMEOUT_MS = 60_000;
 // Omni API limit: 60 req/min per key. Leave headroom → ~50/min ≈ 1200ms between requests.
@@ -174,17 +174,55 @@ export class OmniClient {
     delete payload.identifier;
     const res = await this.request('POST', '/api/unstable/documents/import', { body: payload });
     const raw = await res.json() as Record<string, unknown>;
+    // The live response puts the new document under `workbook` ({ workbook: { identifier, documentId } }).
+    const workbook = raw.workbook && typeof raw.workbook === 'object' ? raw.workbook as Record<string, unknown> : undefined;
     const identifier =
+      (typeof workbook?.identifier === 'string' ? workbook.identifier : undefined) ??
       (typeof raw.identifier === 'string' ? raw.identifier : undefined) ??
       (raw.document && typeof (raw.document as any).identifier === 'string' ? (raw.document as any).identifier : undefined) ??
       (typeof raw.miniUuid === 'string' ? raw.miniUuid : undefined) ??
       '';
     const documentId =
+      (typeof workbook?.documentId === 'string' ? workbook.documentId : undefined) ??
       (typeof raw.documentId === 'string' ? raw.documentId : undefined) ??
       (typeof raw.id === 'string' ? raw.id : undefined) ??
       (raw.document && typeof (raw.document as any).id === 'string' ? (raw.document as any).id : undefined) ??
       '';
-    return { documentId, identifier, raw };
+    const miniUuidMap: Record<string, string> = {};
+    if (raw.miniUuidMap && typeof raw.miniUuidMap === 'object') {
+      for (const [k, v] of Object.entries(raw.miniUuidMap as Record<string, unknown>)) {
+        if (typeof v === 'string') miniUuidMap[k] = v;
+      }
+    }
+    return { documentId, identifier, miniUuidMap, raw };
+  }
+
+  async getModel(modelId: string): Promise<OmniModelRecord | null> {
+    const res = await this.request('GET', '/api/v1/models', { query: { modelId } });
+    const data = await res.json() as { records?: OmniModelRecord[] };
+    return (data.records ?? []).find(r => r.id === modelId) ?? null;
+  }
+
+  // mode=extension returns only the files this model defines, not the files inherited from its base model.
+  async getModelYaml(modelId: string, opts: { mode?: string; includeChecksums?: boolean } = {}): Promise<OmniModelYaml> {
+    const res = await this.request('GET', `/api/v1/models/${encodeURIComponent(modelId)}/yaml`, {
+      query: { mode: opts.mode, includeChecksums: opts.includeChecksums ? 'true' : undefined },
+    });
+    const data = await res.json() as OmniModelYaml;
+    return { files: data.files ?? {}, checksums: data.checksums };
+  }
+
+  async writeModelYaml(modelId: string, body: { fileName: string; yaml: string; mode?: string; previousChecksum?: string }): Promise<void> {
+    await this.request('POST', `/api/v1/models/${encodeURIComponent(modelId)}/yaml`, { body });
+  }
+
+  // Runs a semantic query and returns its rows. Omni returns 400 when a field cannot compile.
+  async runQuery(query: Record<string, unknown>, opts: { environmentConnectionId?: string } = {}): Promise<unknown[]> {
+    const body: Record<string, unknown> = { query, resultType: 'json', cache: 'SkipCache' };
+    if (opts.environmentConnectionId) body.environmentConnectionId = opts.environmentConnectionId;
+    const res = await this.request('POST', '/api/v1/query/run', { body });
+    const data = await res.json() as unknown;
+    return Array.isArray(data) ? data : [];
   }
 
   async deleteDoc(identifier: string): Promise<void> {
