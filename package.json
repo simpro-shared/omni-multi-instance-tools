@@ -29,7 +29,7 @@
     "@fastify/rate-limit": "^11.2.0",
     "@fastify/static": "^10.1.2",
     "@tanstack/react-query": "^5.62.8",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.11.1",
     "fastify": "^5.2.1",
     "fastify-type-provider-zod": "^4.0.2",
     "react": "^18.3.1",
