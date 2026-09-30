@@ -2,7 +2,9 @@ import type {
   InstancePublic,
   Instance,
   DashboardFilter,
+  FolderRef,
   OmniDoc,
+  OmniFolder,
   OmniLabel,
   JobPlan,
   Job,
@@ -107,8 +109,11 @@ export const api = {
       body: JSON.stringify(actions),
     }).then(j<{ ok: true }>),
 
-  listFolder: (instanceId: string) =>
-    fetch(`/api/instances/${instanceId}/folder`).then(j<OmniDoc[]>),
+  listFolder: (instanceId: string, folderId?: string) =>
+    fetch(`/api/instances/${instanceId}/folder${folderId ? `?folderId=${encodeURIComponent(folderId)}` : ''}`).then(j<OmniDoc[]>),
+  searchFolders: (instanceId: string, q: string, refresh = false) =>
+    fetch(`/api/instances/${instanceId}/folders?q=${encodeURIComponent(q)}${refresh ? '&refresh=1' : ''}`)
+      .then(j<{ folders: OmniFolder[]; total: number; cachedAt: number }>),
 
   getDoc: (instanceId: string, docId: string) =>
     fetch(`/api/instances/${instanceId}/documents/${encodeURIComponent(docId)}`)
@@ -129,13 +134,13 @@ export const api = {
       body: JSON.stringify(body),
     }).then(j<{ ok: true }>),
 
-  previewJob: (body: { sourceId: string; destIds: string[]; docIds: string[]; emptyFirst: boolean }) =>
+  previewJob: (body: { sourceId: string; destIds: string[]; docIds: string[]; emptyFirst: boolean; sourceFolder?: FolderRef; destFolders?: Record<string, FolderRef> }) =>
     fetch('/api/jobs/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(j<JobPlan>),
-  createJob: (body: { sourceId: string; destIds: string[]; docIds: string[]; emptyFirst: boolean; postMigrationActions?: PostMigrationAction[] }) =>
+  createJob: (body: { sourceId: string; destIds: string[]; docIds: string[]; emptyFirst: boolean; postMigrationActions?: PostMigrationAction[]; sourceFolder?: FolderRef; destFolders?: Record<string, FolderRef> }) =>
     fetch('/api/jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

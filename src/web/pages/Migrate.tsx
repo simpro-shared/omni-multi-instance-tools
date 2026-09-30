@@ -2,7 +2,8 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
-import type { JobPlan, OmniDoc, PostMigrationAction, PostMigrationActionResult } from '../../shared/types';
+import { FolderPicker } from '../lib/FolderPicker';
+import type { FolderRef, JobPlan, OmniDoc, PostMigrationAction, PostMigrationActionResult } from '../../shared/types';
 
 export default function Migrate() {
   const nav = useNavigate();
@@ -14,6 +15,8 @@ export default function Migrate() {
 
   const [sourceId, setSourceId] = useState<string>('');
   const [destIds, setDestIds] = useState<string[]>([]);
+  const [sourceFolder, setSourceFolder] = useState<FolderRef | null>(null);
+  const [destFolders, setDestFolders] = useState<Record<string, FolderRef>>({});
   const [docIds, setDocIds] = useState<string[]>([]);
   const [emptyFirst, setEmptyFirst] = useState(false);
   const [plan, setPlan] = useState<JobPlan | null>(null);
@@ -21,13 +24,21 @@ export default function Migrate() {
   const [postMigrationActions, setPostMigrationActions] = useState<PostMigrationAction[]>([]);
   const [enabledActionIndices, setEnabledActionIndices] = useState<Set<number>>(new Set());
 
+  const sourceInstance = useMemo(() => instances?.find(i => i.id === sourceId), [instances, sourceId]);
+  const sourceFolderId = sourceFolder?.id ?? sourceInstance?.folderId ?? '';
+
   const docs = useQuery({
-    queryKey: ['folder', sourceId],
-    queryFn: () => api.listFolder(sourceId),
-    enabled: !!sourceId,
+    queryKey: ['folder', sourceId, sourceFolderId],
+    queryFn: () => api.listFolder(sourceId, sourceFolder?.id),
+    enabled: !!sourceId && !!sourceFolderId,
   });
 
-  const sourceInstance = useMemo(() => instances?.find(i => i.id === sourceId), [instances, sourceId]);
+  const selectedDestFolders = useMemo(() => {
+    const out: Record<string, FolderRef> = {};
+    for (const id of destIds) if (destFolders[id]) out[id] = destFolders[id]!;
+    return out;
+  }, [destIds, destFolders]);
+  const destsMissingFolder = dests.filter(d => destIds.includes(d.id) && !destFolders[d.id] && !d.folderId);
 
   useEffect(() => {
     const actions = sourceInstance?.postMigrationActions ?? [];
@@ -36,13 +47,15 @@ export default function Migrate() {
   }, [sourceId, sourceInstance?.postMigrationActions]);
 
   const preview = useMutation({
-    mutationFn: () => api.previewJob({ sourceId, destIds, docIds, emptyFirst }),
+    mutationFn: () => api.previewJob({ sourceId, destIds, docIds, emptyFirst, sourceFolder: sourceFolder ?? undefined, destFolders: selectedDestFolders }),
     onSuccess: p => setPlan(p),
   });
 
   const execute = useMutation({
     mutationFn: () => api.createJob({
       sourceId, destIds, docIds, emptyFirst,
+      sourceFolder: sourceFolder ?? undefined,
+      destFolders: selectedDestFolders,
       postMigrationActions: postMigrationActions.filter((_, i) => enabledActionIndices.has(i)),
     }),
     onSuccess: ({ job }) => nav(`/jobs/${job.id}`),
@@ -51,7 +64,7 @@ export default function Migrate() {
   const toggle = (arr: string[], id: string): string[] =>
     arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id];
 
-  const canPreview = sourceId && destIds.length > 0 && docIds.length > 0;
+  const canPreview = sourceId && destIds.length > 0 && docIds.length > 0 && destsMissingFolder.length === 0;
 
   return (
     <div className="space-y-6">
@@ -60,7 +73,7 @@ export default function Migrate() {
           <label className="block text-xs text-zinc-400 mb-1">Source</label>
           <select
             value={sourceId}
-            onChange={e => { setSourceId(e.target.value); setDocIds([]); setPlan(null); }}
+            onChange={e => { setSourceId(e.target.value); setSourceFolder(null); setDocIds([]); setPlan(null); }}
             className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm"
           >
             <option value="">— pick source —</option>
@@ -68,6 +81,17 @@ export default function Migrate() {
               <option key={s.id} value={s.id}>{s.label} ({s.baseUrl})</option>
             ))}
           </select>
+          {sourceInstance && (
+            <div className="mt-2">
+              <label className="block text-xs text-zinc-400 mb-1">Source folder</label>
+              <FolderPicker
+                instanceId={sourceInstance.id}
+                value={sourceFolder}
+                defaultFolder={{ id: sourceInstance.folderId, path: sourceInstance.folderPath }}
+                onChange={f => { setSourceFolder(f); setDocIds([]); setPlan(null); }}
+              />
+            </div>
+          )}
         </div>
 
         <div>
@@ -89,6 +113,28 @@ export default function Migrate() {
             ))}
             {dests.length === 0 && <span className="text-sm text-zinc-500">No destinations. Add some under Instances.</span>}
           </div>
+          {destIds.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {dests.filter(d => destIds.includes(d.id)).map(d => (
+                <div key={d.id} className="grid grid-cols-[8rem_1fr] items-center gap-2">
+                  <span className="text-xs text-zinc-400 truncate">{d.label} folder</span>
+                  <FolderPicker
+                    instanceId={d.id}
+                    value={destFolders[d.id] ?? null}
+                    defaultFolder={{ id: d.folderId, path: d.folderPath }}
+                    onChange={f => {
+                      setDestFolders(prev => {
+                        const next = { ...prev };
+                        if (f) next[d.id] = f; else delete next[d.id];
+                        return next;
+                      });
+                      setPlan(null);
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <label className="flex items-center gap-2 text-sm">
@@ -103,6 +149,7 @@ export default function Migrate() {
             <h3 className="text-sm font-medium text-zinc-200">Documents in source folder</h3>
             <span className="ml-auto text-xs text-zinc-500">{docs.data?.length ?? 0} total</span>
           </div>
+          {!sourceFolderId && <div className="text-sm text-amber-300">Pick a source folder.</div>}
           {docs.isLoading && <div className="text-sm text-zinc-500">loading…</div>}
           {docs.error && <div className="text-sm text-red-400">{(docs.error as Error).message}</div>}
           {docs.data && (
@@ -227,6 +274,11 @@ export default function Migrate() {
         )}
       </div>
 
+      {destsMissingFolder.length > 0 && (
+        <div className="text-sm text-amber-300">
+          Pick a folder for: {destsMissingFolder.map(d => d.label).join(', ')}
+        </div>
+      )}
       {preview.error && <div className="text-sm text-red-400">{(preview.error as Error).message}</div>}
       {plan && <PlanView plan={plan} />}
     </div>
@@ -240,11 +292,19 @@ function PlanView({ plan }: { plan: JobPlan }) {
   }, {});
   return (
     <section className="bg-zinc-900 border border-zinc-800 rounded p-4">
-      <h3 className="text-sm font-medium mb-3">Plan preview ({plan.steps.length} steps)</h3>
+      <h3 className="text-sm font-medium mb-1">Plan preview ({plan.steps.length} steps)</h3>
+      <div className="text-xs text-zinc-500 mb-3">
+        from {plan.sourceLabel} · <span className="font-mono">{plan.sourceFolder.path || plan.sourceFolder.id}</span>
+      </div>
       <div className="grid gap-4 md:grid-cols-2">
         {Object.entries(byDest).map(([destId, steps]) => (
           <div key={destId} className="border border-zinc-800 rounded p-3">
-            <div className="text-xs text-zinc-400 mb-2">{steps[0]!.destLabel}</div>
+            <div className="text-xs text-zinc-400 mb-2">
+              {steps[0]!.destLabel}
+              {plan.destFolders[destId] && (
+                <span className="ml-2 font-mono text-zinc-500">→ {plan.destFolders[destId]!.path || plan.destFolders[destId]!.id}</span>
+              )}
+            </div>
             <ul className="text-sm space-y-1 max-h-60 overflow-auto">
               {steps.map((s, i) => (
                 <li key={i} className="flex gap-2">

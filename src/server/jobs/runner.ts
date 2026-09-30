@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Job, JobItem, JobStatus, OmniLabel } from '../../shared/types.js';
+import type { FolderRef, Job, JobItem, JobStatus, OmniLabel } from '../../shared/types.js';
 import { getInstance } from '../storage/vault.js';
 import { OmniClient, OmniError } from '../omni/client.js';
 import type { OmniExportPayload } from '../omni/types.js';
@@ -8,6 +8,7 @@ import { publish } from './events.js';
 import { runPostMigrationActions } from './postMigration.js';
 import { copyQueryModels, pairQueryModels, rewriteSourceIds, verifyTiles } from './queryModels.js';
 import type { TargetBinding } from './queryModels.js';
+import { resolveFolder } from './folders.js';
 
 interface SourceMeta {
   description: string | null;
@@ -57,7 +58,7 @@ async function executeJob(job: Job): Promise<void> {
   const sourceMeta = new Map<string, SourceMeta>();
   const sourceLabelDefs = new Map<string, OmniLabel>();
   try {
-    const docs = await sourceClient.listFolder(source.folderId, { includeLabels: true });
+    const docs = await sourceClient.listFolder(resolveFolder(source, job.sourceFolder).id, { includeLabels: true });
     for (const d of docs) {
       sourceMeta.set(d.identifier, {
         description: d.description ?? null,
@@ -78,7 +79,7 @@ async function executeJob(job: Job): Promise<void> {
 
   await Promise.all(
     Array.from(byDest.entries()).map(([destId, destItems]) =>
-      runDestination(job.id, destId, destItems, sourceClient, exportCache, sourceYamlCache, sourceMeta, sourceLabelDefs),
+      runDestination(job, destId, destItems, sourceClient, exportCache, sourceYamlCache, sourceMeta, sourceLabelDefs),
     ),
   );
 
@@ -107,7 +108,7 @@ async function executeJob(job: Job): Promise<void> {
 }
 
 async function runDestination(
-  jobId: string,
+  job: Job,
   destId: string,
   items: JobItem[],
   sourceClient: OmniClient,
@@ -116,12 +117,20 @@ async function runDestination(
   sourceMeta: Map<string, SourceMeta>,
   sourceLabelDefs: Map<string, OmniLabel>,
 ): Promise<void> {
+  const jobId = job.id;
   const dest = getInstance(destId);
   if (!dest) {
     for (const item of items) fail(jobId, item.id, 'destination instance missing');
     return;
   }
   const destClient = new OmniClient(dest);
+  let destFolder: FolderRef;
+  try {
+    destFolder = resolveFolder(dest, job.destFolders[destId]);
+  } catch (err) {
+    for (const item of items) fail(jobId, item.id, err instanceof Error ? err.message : String(err));
+    return;
+  }
   let destLabelsLoaded = false;
   const destLabels = new Set<string>();
   const ensureDestLabels = async (): Promise<void> => {
@@ -177,12 +186,12 @@ async function runDestination(
         const imported = await destClient.importDoc({
           exportPayload: rewritten,
           baseModelId: dest.modelId,
-          folderPath: dest.folderPath,
+          folderPath: destFolder.path,
           documentName: docName,
         });
         let newId = imported.identifier;
         if (!newId) {
-          const docs = await destClient.listFolder(dest.folderId);
+          const docs = await destClient.listFolder(destFolder.id);
           const matches = docs.filter(d => d.name === docName);
           matches.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
           newId = matches[0]?.identifier ?? '';

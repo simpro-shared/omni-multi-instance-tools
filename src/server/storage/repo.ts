@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from './db.js';
-import type { Job, JobItem, JobItemKind, JobItemStatus, JobStatus, PostMigrationAction, PostMigrationActionResult } from '../../shared/types.js';
+import type { FolderRef, Job, JobItem, JobItemKind, JobItemStatus, JobStatus, PostMigrationAction, PostMigrationActionResult } from '../../shared/types.js';
 
 interface JobRow {
   id: string;
@@ -15,6 +15,8 @@ interface JobRow {
   parent_job_id: string | null;
   post_migration_actions: string | null;
   post_migration_results: string | null;
+  source_folder: string | null;
+  dest_folders: string | null;
 }
 
 interface ItemRow {
@@ -45,6 +47,8 @@ function rowToJob(r: JobRow): Job {
     parentJobId: r.parent_job_id,
     postMigrationActions: r.post_migration_actions ? (JSON.parse(r.post_migration_actions) as PostMigrationAction[]) : [],
     postMigrationResults: r.post_migration_results ? (JSON.parse(r.post_migration_results) as PostMigrationActionResult[]) : undefined,
+    sourceFolder: r.source_folder ? (JSON.parse(r.source_folder) as FolderRef) : null,
+    destFolders: r.dest_folders ? (JSON.parse(r.dest_folders) as Record<string, FolderRef>) : {},
   };
 }
 
@@ -71,6 +75,8 @@ export interface CreateJobRow {
   emptyFirst: boolean;
   parentJobId?: string;
   postMigrationActions?: PostMigrationAction[];
+  sourceFolder?: FolderRef | null;
+  destFolders?: Record<string, FolderRef>;
 }
 
 export function createJob(input: CreateJobRow): Job {
@@ -78,9 +84,11 @@ export function createJob(input: CreateJobRow): Job {
   const id = randomUUID();
   const now = Date.now();
   const actions = input.postMigrationActions ?? [];
+  const sourceFolder = input.sourceFolder ?? null;
+  const destFolders = input.destFolders ?? {};
   db.prepare(`
-    INSERT INTO jobs (id, source_id, dest_ids, doc_ids, empty_first, status, created_at, parent_job_id, post_migration_actions)
-    VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+    INSERT INTO jobs (id, source_id, dest_ids, doc_ids, empty_first, status, created_at, parent_job_id, post_migration_actions, source_folder, dest_folders)
+    VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
   `).run(
     id,
     input.sourceId,
@@ -90,6 +98,8 @@ export function createJob(input: CreateJobRow): Job {
     now,
     input.parentJobId ?? null,
     actions.length > 0 ? JSON.stringify(actions) : null,
+    sourceFolder ? JSON.stringify(sourceFolder) : null,
+    Object.keys(destFolders).length > 0 ? JSON.stringify(destFolders) : null,
   );
   return {
     id,
@@ -103,6 +113,8 @@ export function createJob(input: CreateJobRow): Job {
     endedAt: null,
     parentJobId: input.parentJobId ?? null,
     postMigrationActions: actions,
+    sourceFolder,
+    destFolders,
   };
 }
 

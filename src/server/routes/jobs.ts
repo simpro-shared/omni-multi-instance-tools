@@ -22,12 +22,20 @@ const actionSchema = z.object({
   body: z.string().default(''),
 });
 
+const folderRef = z.object({
+  id: z.string().min(1),
+  path: z.string().default(''),
+  name: z.string().optional(),
+});
+
 const createInput = z.object({
   sourceId: z.string().uuid(),
   destIds: z.array(z.string().uuid()).min(1),
   docIds: z.array(z.string()).min(1),
   emptyFirst: z.boolean().default(false),
   postMigrationActions: z.array(actionSchema).default([]),
+  sourceFolder: folderRef.optional(),
+  destFolders: z.record(folderRef).default({}),
 });
 
 export async function jobRoutes(app: FastifyInstance): Promise<void> {
@@ -49,7 +57,8 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
     if (!isUnlocked()) return reply.code(423).send({ error: 'vault locked' });
     const input = createInput.parse(req.body);
     const plan = await buildPlan(input);
-    const job = createJob({ ...input, postMigrationActions: input.postMigrationActions });
+    // Store the folders the plan resolved, so the run and any retry use exactly what was previewed.
+    const job = createJob({ ...input, sourceFolder: plan.sourceFolder, destFolders: plan.destFolders });
     const items: NewItem[] = plan.steps.map(s => ({
       jobId: job.id,
       destId: s.destId,
@@ -80,6 +89,8 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
       docIds,
       emptyFirst: false,
       parentJobId: parent.id,
+      sourceFolder: parent.sourceFolder,
+      destFolders: parent.destFolders,
     });
 
     const items: NewItem[] = [];

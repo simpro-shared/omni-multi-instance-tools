@@ -52,6 +52,20 @@ export interface OmniDoc {
   labels?: string[];
 }
 
+export interface OmniFolder {
+  id: string;
+  name: string;
+  path: string;
+  scope?: string;
+}
+
+// Folder chosen for one migration run. Overrides the folder saved on the instance.
+export interface FolderRef {
+  id: string;
+  path: string;
+  name?: string;
+}
+
 export interface OmniLabel {
   name: string;
   color?: string | null;
@@ -97,6 +111,8 @@ export interface Job {
   parentJobId: string | null;
   postMigrationActions: PostMigrationAction[];
   postMigrationResults?: PostMigrationActionResult[];
+  sourceFolder: FolderRef | null;
+  destFolders: Record<string, FolderRef>;
 }
 
 export interface JobWithItems extends Job {
@@ -114,6 +130,8 @@ export interface JobPlanStep {
 export interface JobPlan {
   sourceId: string;
   sourceLabel: string;
+  sourceFolder: FolderRef;
+  destFolders: Record<string, FolderRef>;
   destIds: string[];
   docIds: string[];
   emptyFirst: boolean;
@@ -126,6 +144,8 @@ export interface CreateJobInput {
   docIds: string[];
   emptyFirst: boolean;
   postMigrationActions?: PostMigrationAction[];
+  sourceFolder?: FolderRef;
+  destFolders?: Record<string, FolderRef>;
 }
 
 export interface JobEvent {

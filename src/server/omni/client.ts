@@ -1,4 +1,4 @@
-import type { Instance, OmniDoc, OmniLabel } from '../../shared/types.js';
+import type { Instance, OmniDoc, OmniFolder, OmniLabel } from '../../shared/types.js';
 import type { OmniConnection, OmniExportPayload, OmniImportResponse, OmniLabelsListResponse, OmniListResponse, OmniModelRecord, OmniModelYaml, OmniSchemaModel, ScimListResponse, ScimUser } from './types.js';
 
 const TIMEOUT_MS = 60_000;
@@ -122,6 +122,18 @@ export class OmniClient {
           labels: Array.isArray(r.labels) ? r.labels : undefined,
         });
       }
+      cursor = data.pageInfo?.hasNextPage ? data.pageInfo.nextCursor ?? undefined : undefined;
+    } while (cursor);
+    return out;
+  }
+
+  async listFolders(): Promise<OmniFolder[]> {
+    const out: OmniFolder[] = [];
+    let cursor: string | undefined;
+    do {
+      const res = await this.request('GET', '/api/v1/folders', { query: { pageSize: 100, cursor } });
+      const data = await res.json() as { pageInfo?: { hasNextPage?: boolean; nextCursor?: string | null }; records?: OmniFolder[] };
+      for (const f of data.records ?? []) out.push({ id: f.id, name: f.name, path: f.path, scope: f.scope });
       cursor = data.pageInfo?.hasNextPage ? data.pageInfo.nextCursor ?? undefined : undefined;
     } while (cursor);
     return out;
