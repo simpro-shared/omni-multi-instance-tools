@@ -313,7 +313,12 @@ function FilterEditor({
       {open && (
         <div className="px-3 pb-3 space-y-3 text-xs">
           <div>
-            <div className="text-zinc-500 mb-1">Connections — skip if database matches</div>
+            <div className="flex items-center justify-between text-zinc-500 mb-1">
+              <span>Connections — skip if database matches</span>
+              {dbPatterns.length > 0 && (
+                <button onClick={() => setDbPatterns([])} className="text-zinc-500 hover:text-zinc-200">clear all</button>
+              )}
+            </div>
             <div className="flex gap-1 mb-1">
               <ModeToggle mode={dbMode} onChange={setDbMode} />
               <input
@@ -328,7 +333,12 @@ function FilterEditor({
             <PatternChips patterns={dbPatterns} onChange={setDbPatterns} />
           </div>
           <div>
-            <div className="text-zinc-500 mb-1">Users — skip if external ID matches</div>
+            <div className="flex items-center justify-between text-zinc-500 mb-1">
+              <span>Users — skip if external ID matches</span>
+              {idPatterns.length > 0 && (
+                <button onClick={() => setIdPatterns([])} className="text-zinc-500 hover:text-zinc-200">clear all</button>
+              )}
+            </div>
             <div className="flex gap-1 mb-1">
               <ModeToggle mode={idMode} onChange={setIdMode} />
               <input
@@ -349,6 +359,13 @@ function FilterEditor({
               className="px-3 py-1 bg-zinc-100 text-zinc-900 rounded font-medium disabled:opacity-40"
             >
               {saving ? 'saving…' : 'Update filter'}
+            </button>
+            <button
+              onClick={() => { setDbPatterns([]); setIdPatterns([]); }}
+              disabled={saving || totalPatterns === 0}
+              className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded disabled:opacity-40"
+            >
+              Clear all filters
             </button>
             {saved && <span className="text-emerald-400">Saved</span>}
           </div>
